@@ -16,9 +16,13 @@ const eventSchemaBase = z.object({
   postalCode: z.string().optional(),
   onlineUrl: z.string().url().optional().nullable(),
   coverImage: z.string().url().optional().nullable(),
+  bottomImage: z.string().url().optional().nullable(),
   visibility: z.enum(['PUBLIC', 'PRIVATE']).default('PUBLIC'),
   cancellationDeadlineHours: z.number().min(0).default(48),
   categoryIds: z.array(z.string()).optional(),
+  speakerNames: z.array(z.string()).optional(),
+  organizerNames: z.array(z.string()).optional(),
+  sponsorNames: z.array(z.string()).optional(),
   autoCreateFreeTicket: z.boolean().optional().default(false),
 })
 

@@ -12,6 +12,40 @@ const updateEventApiSchema = updateEventSchema.extend({
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
 })
 
+type EventPeopleRole = 'SPEAKER' | 'ORGANIZER' | 'SPONSOR'
+
+function normalizeNameList(names?: string[]): string[] {
+  return (names || []).map((name) => name.trim()).filter(Boolean)
+}
+
+function buildPeopleCreateData(names: string[], role: EventPeopleRole, sortOrderStart: number) {
+  return names.map((name, index) => ({
+    name,
+    title: role === 'SPEAKER' ? 'Speaker' : role === 'ORGANIZER' ? 'Organizer' : 'Sponsor',
+    sortOrder: sortOrderStart + index,
+    socialLinks: {
+      __kind: 'EVENT_PEOPLE',
+      role,
+    },
+  }))
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function resolveEventPeopleRole(socialLinks: unknown): EventPeopleRole | null {
+  if (!isRecord(socialLinks)) return null
+
+  const markerKind = socialLinks.__kind
+  const markerRole = socialLinks.role
+  if (markerKind !== 'EVENT_PEOPLE') return null
+  if (markerRole === 'SPEAKER' || markerRole === 'ORGANIZER' || markerRole === 'SPONSOR') {
+    return markerRole
+  }
+  return null
+}
+
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireRole('ORGANIZER')
@@ -56,7 +90,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const { categoryIds, status, ...input } = parsed.data
+    const {
+      categoryIds,
+      status,
+      bottomImage,
+      speakerNames,
+      organizerNames,
+      sponsorNames,
+      ...input
+    } = parsed.data
 
     const nextStartDate = input.startDate ? new Date(input.startDate) : existingEvent.startDate
     const nextEndDate = input.endDate ? new Date(input.endDate) : existingEvent.endDate
@@ -117,6 +159,87 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         if (categoryIds.length > 0) {
           await tx.eventCategory.createMany({
             data: categoryIds.map((categoryId) => ({ eventId: id, categoryId })),
+          })
+        }
+      }
+
+      if (bottomImage !== undefined) {
+        await tx.eventMedia.deleteMany({
+          where: {
+            eventId: id,
+            title: 'BOTTOM_IMAGE',
+          },
+        })
+
+        if (bottomImage) {
+          await tx.eventMedia.create({
+            data: {
+              eventId: id,
+              url: bottomImage,
+              type: 'IMAGE',
+              title: 'BOTTOM_IMAGE',
+              sortOrder: 999,
+            },
+          })
+        }
+      }
+
+      const shouldUpdatePeople = speakerNames !== undefined || organizerNames !== undefined || sponsorNames !== undefined
+
+      if (shouldUpdatePeople) {
+        const existingSpeakers = await tx.speaker.findMany({
+          where: { eventId: id },
+          select: {
+            id: true,
+            name: true,
+            socialLinks: true,
+          },
+        })
+
+        const taggedSpeakers = existingSpeakers
+          .map((speaker) => ({
+            id: speaker.id,
+            name: speaker.name,
+            role: resolveEventPeopleRole(speaker.socialLinks),
+          }))
+          .filter((speaker): speaker is { id: string; name: string; role: EventPeopleRole } => Boolean(speaker.role))
+
+        const existingRoleNames = {
+          SPEAKER: taggedSpeakers.filter((speaker) => speaker.role === 'SPEAKER').map((speaker) => speaker.name),
+          ORGANIZER: taggedSpeakers.filter((speaker) => speaker.role === 'ORGANIZER').map((speaker) => speaker.name),
+          SPONSOR: taggedSpeakers.filter((speaker) => speaker.role === 'SPONSOR').map((speaker) => speaker.name),
+        }
+
+        const nextSpeakerNames = speakerNames !== undefined ? normalizeNameList(speakerNames) : existingRoleNames.SPEAKER
+        const nextOrganizerNames = organizerNames !== undefined ? normalizeNameList(organizerNames) : existingRoleNames.ORGANIZER
+        const nextSponsorNames = sponsorNames !== undefined ? normalizeNameList(sponsorNames) : existingRoleNames.SPONSOR
+
+        if (taggedSpeakers.length > 0) {
+          await tx.speaker.deleteMany({
+            where: {
+              id: {
+                in: taggedSpeakers.map((speaker) => speaker.id),
+              },
+            },
+          })
+        }
+
+        const peopleCreateData = [
+          ...buildPeopleCreateData(nextSpeakerNames, 'SPEAKER', 0),
+          ...buildPeopleCreateData(nextOrganizerNames, 'ORGANIZER', nextSpeakerNames.length),
+          ...buildPeopleCreateData(
+            nextSponsorNames,
+            'SPONSOR',
+            nextSpeakerNames.length + nextOrganizerNames.length
+          ),
+        ]
+
+        if (peopleCreateData.length > 0) {
+          await tx.speaker.createMany({
+            data: peopleCreateData.map((person) => ({
+              eventId: id,
+              ...person,
+            })),
           })
         }
       }

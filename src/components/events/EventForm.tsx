@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { ChangeEvent, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +25,10 @@ type EventFormData = {
   postalCode?: string | null
   onlineUrl?: string | null
   coverImage?: string | null
+  bottomImage?: string | null
+  speakerNames?: string
+  organizerNames?: string
+  sponsorNames?: string
   visibility: 'PUBLIC' | 'PRIVATE'
   cancellationDeadlineHours: number
   categoryIds?: string[]
@@ -51,6 +55,10 @@ const fallbackInitialData: EventFormData = {
   postalCode: '',
   onlineUrl: '',
   coverImage: '',
+  bottomImage: '',
+  speakerNames: '',
+  organizerNames: '',
+  sponsorNames: '',
   visibility: 'PUBLIC',
   cancellationDeadlineHours: 48,
   categoryIds: [],
@@ -65,8 +73,19 @@ function toDateTimeLocalString(value?: string | null) {
   return localDate.toISOString().slice(0, 16)
 }
 
+const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+
+function parseNameList(raw?: string | null): string[] {
+  return (raw || '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)
+}
+
 export function EventForm({ mode, initialData }: EventFormProps) {
   const router = useRouter()
+  const bannerInputRef = useRef<HTMLInputElement | null>(null)
+  const bottomInputRef = useRef<HTMLInputElement | null>(null)
   const mergedInitialData = useMemo(() => ({ ...fallbackInitialData, ...initialData }), [initialData])
 
   const [form, setForm] = useState<EventFormData>({
@@ -76,14 +95,18 @@ export function EventForm({ mode, initialData }: EventFormProps) {
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false)
+  const [isUploadingBottom, setIsUploadingBottom] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const updateField = <K extends keyof EventFormData>(key: K, value: EventFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  async function uploadCoverImage(file: File) {
-    if (!form.id && mode === 'edit') return
+  async function uploadEventImage(file: File, targetField: 'coverImage' | 'bottomImage') {
+    if (!form.id && mode === 'edit') {
+      throw new Error('Save the event once before uploading images')
+    }
 
     const uploadRes = await fetch('/api/upload/presigned', {
       method: 'POST',
@@ -118,10 +141,40 @@ export function EventForm({ mode, initialData }: EventFormProps) {
     })
 
     if (!putRes.ok) {
-      throw new Error('Failed to upload cover image')
+      throw new Error('Failed to upload image')
     }
 
-    updateField('coverImage', publicUrl)
+    updateField(targetField, publicUrl)
+  }
+
+  async function onImageSelected(event: ChangeEvent<HTMLInputElement>, targetField: 'coverImage' | 'bottomImage') {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!allowedImageMimeTypes.has(file.type)) {
+      setError('Please select a JPG, PNG, WEBP, or GIF image.')
+      event.target.value = ''
+      return
+    }
+
+    if (targetField === 'coverImage') {
+      setIsUploadingBanner(true)
+    } else {
+      setIsUploadingBottom(true)
+    }
+
+    try {
+      await uploadEventImage(file, targetField)
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Upload failed')
+    } finally {
+      if (targetField === 'coverImage') {
+        setIsUploadingBanner(false)
+      } else {
+        setIsUploadingBottom(false)
+      }
+      event.target.value = ''
+    }
   }
 
   async function submit(action: 'save' | 'publish') {
@@ -129,12 +182,23 @@ export function EventForm({ mode, initialData }: EventFormProps) {
     setError(null)
 
     try {
+      const startDate = new Date(form.startDate)
+      const endDate = new Date(form.endDate)
+
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        throw new Error('Start and end dates are required')
+      }
+
       const payload = {
         ...form,
-        startDate: new Date(form.startDate).toISOString(),
-        endDate: new Date(form.endDate).toISOString(),
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
         onlineUrl: form.onlineUrl || null,
         coverImage: form.coverImage || null,
+        bottomImage: form.bottomImage || null,
+        speakerNames: parseNameList(form.speakerNames),
+        organizerNames: parseNameList(form.organizerNames),
+        sponsorNames: parseNameList(form.sponsorNames),
         categoryIds: form.categoryIds,
       }
 
@@ -178,172 +242,242 @@ export function EventForm({ mode, initialData }: EventFormProps) {
   }
 
   return (
-    <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-6">
-      <h2 className="text-xl font-semibold text-gray-900">
-        {mode === 'create' ? 'Create Event' : 'Edit Event'}
+    <div className="space-y-8 px-1 sm:px-0">
+      <h2 className="text-3xl font-semibold tracking-tight text-gray-900">
+        {mode === 'create' ? 'Create Event Info' : 'Edit Event Info'}
       </h2>
 
       {error ? (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="md:col-span-2">
-          <Label htmlFor="title" required>Title</Label>
-          <Input id="title" value={form.title} onChange={(e) => updateField('title', e.target.value)} />
-        </div>
+      <section className="overflow-hidden rounded-xl border-4 border-blue-500 bg-gray-900">
+        {form.coverImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={form.coverImage} alt="Event banner" className="h-[230px] w-full object-cover sm:h-[340px]" />
+        ) : (
+          <div className="h-[230px] bg-gradient-to-r from-slate-700 to-slate-900 sm:h-[340px]" />
+        )}
+      </section>
 
-        <div className="md:col-span-2">
-          <Label htmlFor="description">Description</Label>
-          <textarea
-            id="description"
-            className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            value={form.description || ''}
-            onChange={(e) => updateField('description', e.target.value)}
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <Label htmlFor="descriptionHtml">Rich Description (HTML supported)</Label>
-          <textarea
-            id="descriptionHtml"
-            className="min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm"
-            value={form.descriptionHtml || ''}
-            onChange={(e) => updateField('descriptionHtml', e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="startDate" required>Start</Label>
-          <Input id="startDate" type="datetime-local" value={form.startDate} onChange={(e) => updateField('startDate', e.target.value)} />
-        </div>
-        <div>
-          <Label htmlFor="endDate" required>End</Label>
-          <Input id="endDate" type="datetime-local" value={form.endDate} onChange={(e) => updateField('endDate', e.target.value)} />
-        </div>
-
-        <div>
-          <Label htmlFor="timezone">Timezone</Label>
-          <Input id="timezone" value={form.timezone} onChange={(e) => updateField('timezone', e.target.value)} />
-        </div>
-
-        <div>
-          <Label htmlFor="locationType">Location Type</Label>
-          <select
-            id="locationType"
-            className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm"
-            value={form.locationType}
-            onChange={(e) => updateField('locationType', e.target.value as EventFormData['locationType'])}
-          >
-            <option value="PHYSICAL">Physical</option>
-            <option value="ONLINE">Online</option>
-            <option value="HYBRID">Hybrid</option>
-          </select>
-        </div>
-
-        {form.locationType !== 'ONLINE' ? (
-          <>
-            <div>
-              <Label htmlFor="venue">Venue</Label>
-              <Input id="venue" value={form.venue || ''} onChange={(e) => updateField('venue', e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="address">Address (Autocomplete)</Label>
-              <Input id="address" list="address-suggestions" value={form.address || ''} onChange={(e) => updateField('address', e.target.value)} />
-              <datalist id="address-suggestions">
-                <option value="Main Street 1" />
-                <option value="Conference Center Ave 10" />
-                <option value="Innovation Plaza 5" />
-              </datalist>
-            </div>
-            <div>
-              <Label htmlFor="city">City</Label>
-              <Input id="city" value={form.city || ''} onChange={(e) => updateField('city', e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="state">State</Label>
-              <Input id="state" value={form.state || ''} onChange={(e) => updateField('state', e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="country">Country</Label>
-              <Input id="country" value={form.country || ''} onChange={(e) => updateField('country', e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="postalCode">Postal Code</Label>
-              <Input id="postalCode" value={form.postalCode || ''} onChange={(e) => updateField('postalCode', e.target.value)} />
-            </div>
-          </>
-        ) : null}
-
-        {(form.locationType === 'ONLINE' || form.locationType === 'HYBRID') ? (
-          <div className="md:col-span-2">
-            <Label htmlFor="onlineUrl">Online URL</Label>
-            <Input id="onlineUrl" value={form.onlineUrl || ''} onChange={(e) => updateField('onlineUrl', e.target.value)} />
-          </div>
-        ) : null}
-
-        <div>
-          <Label htmlFor="visibility">Visibility</Label>
-          <select
-            id="visibility"
-            className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm"
-            value={form.visibility}
-            onChange={(e) => updateField('visibility', e.target.value as EventFormData['visibility'])}
-          >
-            <option value="PUBLIC">Public</option>
-            <option value="PRIVATE">Private</option>
-          </select>
-        </div>
-
-        <div>
-          <Label htmlFor="cancellationDeadlineHours">Cancellation Deadline (hours)</Label>
-          <Input
-            id="cancellationDeadlineHours"
-            type="number"
-            min={0}
-            value={form.cancellationDeadlineHours}
-            onChange={(e) => updateField('cancellationDeadlineHours', Number(e.target.value))}
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <Label htmlFor="categoryIds">Category IDs (comma separated)</Label>
-          <Input
-            id="categoryIds"
-            value={form.categoryIds?.join(',') || ''}
-            onChange={(e) => {
-              const ids = e.target.value
-                .split(',')
-                .map((item) => item.trim())
-                .filter(Boolean)
-              updateField('categoryIds', ids)
-            }}
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <Label htmlFor="coverImage">Cover Image URL</Label>
-          <Input id="coverImage" value={form.coverImage || ''} onChange={(e) => updateField('coverImage', e.target.value)} />
-          <div className="mt-2 flex items-center gap-3">
-            <input
-              id="coverImageUpload"
-              type="file"
-              accept="image/*"
-              onChange={async (e) => {
-                const file = e.target.files?.[0]
-                if (!file) return
-                try {
-                  await uploadCoverImage(file)
-                } catch (uploadError) {
-                  setError(uploadError instanceof Error ? uploadError.message : 'Upload failed')
-                }
-              }}
-              className="text-sm"
-            />
-            {form.coverImage ? <span className="text-xs text-green-700">Image ready</span> : null}
-          </div>
-        </div>
+      <div>
+        <input
+          ref={bannerInputRef}
+          id="coverImageUpload"
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={(event) => onImageSelected(event, 'coverImage')}
+          className="hidden"
+          disabled={isUploadingBanner}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => bannerInputRef.current?.click()}
+          isLoading={isUploadingBanner}
+        >
+          Add banner image
+        </Button>
       </div>
+
+      <section className="space-y-5 border-b border-gray-300 pb-6">
+        <h3 className="text-3xl font-semibold text-gray-900">Event Header</h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <Label htmlFor="title" required>Title</Label>
+            <Input id="title" value={form.title} onChange={(e) => updateField('title', e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="startDate" required>Start</Label>
+            <Input id="startDate" type="datetime-local" value={form.startDate} onChange={(e) => updateField('startDate', e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="endDate" required>End</Label>
+            <Input id="endDate" type="datetime-local" value={form.endDate} onChange={(e) => updateField('endDate', e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="timezone">Timezone</Label>
+            <Input id="timezone" value={form.timezone} onChange={(e) => updateField('timezone', e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="locationType" required>Location Type</Label>
+            <select
+              id="locationType"
+              className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm"
+              value={form.locationType}
+              onChange={(e) => updateField('locationType', e.target.value as EventFormData['locationType'])}
+            >
+              <option value="PHYSICAL">Physical</option>
+              <option value="ONLINE">Online</option>
+              <option value="HYBRID">Hybrid</option>
+            </select>
+          </div>
+          {form.locationType !== 'ONLINE' ? (
+            <>
+              <div>
+                <Label htmlFor="venue">Venue</Label>
+                <Input id="venue" value={form.venue || ''} onChange={(e) => updateField('venue', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="address">Address</Label>
+                <Input id="address" value={form.address || ''} onChange={(e) => updateField('address', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="city">City</Label>
+                <Input id="city" value={form.city || ''} onChange={(e) => updateField('city', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="state">State</Label>
+                <Input id="state" value={form.state || ''} onChange={(e) => updateField('state', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="country">Country</Label>
+                <Input id="country" value={form.country || ''} onChange={(e) => updateField('country', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="postalCode">Postal Code</Label>
+                <Input id="postalCode" value={form.postalCode || ''} onChange={(e) => updateField('postalCode', e.target.value)} />
+              </div>
+            </>
+          ) : null}
+          {(form.locationType === 'ONLINE' || form.locationType === 'HYBRID') ? (
+            <div className="md:col-span-2">
+              <Label htmlFor="onlineUrl">Online URL</Label>
+              <Input id="onlineUrl" value={form.onlineUrl || ''} onChange={(e) => updateField('onlineUrl', e.target.value)} />
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="space-y-5 border-b border-gray-300 pb-6">
+        <h3 className="text-3xl font-semibold text-gray-900">Overview</h3>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="description" required>Description</Label>
+            <textarea
+              id="description"
+              className="min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              value={form.description || ''}
+              onChange={(e) => updateField('description', e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="descriptionHtml">Rich Description (HTML)</Label>
+            <textarea
+              id="descriptionHtml"
+              className="min-h-40 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm"
+              value={form.descriptionHtml || ''}
+              onChange={(e) => updateField('descriptionHtml', e.target.value)}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-5 border-b border-gray-300 pb-6">
+        <h3 className="text-3xl font-semibold text-gray-900">People (Optional)</h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div>
+            <Label htmlFor="speakerNames">Speakers</Label>
+            <Input
+              id="speakerNames"
+              placeholder="Jane Doe, John Doe"
+              value={form.speakerNames || ''}
+              onChange={(e) => updateField('speakerNames', e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="organizerNames">Organizers</Label>
+            <Input
+              id="organizerNames"
+              placeholder="OpenEvents Team"
+              value={form.organizerNames || ''}
+              onChange={(e) => updateField('organizerNames', e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="sponsorNames">Sponsors</Label>
+            <Input
+              id="sponsorNames"
+              placeholder="Company A, Company B"
+              value={form.sponsorNames || ''}
+              onChange={(e) => updateField('sponsorNames', e.target.value)}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-5">
+        <h3 className="text-3xl font-semibold text-gray-900">Bottom Visual</h3>
+        {form.bottomImage ? (
+          <div className="overflow-hidden rounded-none bg-gray-900">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={form.bottomImage} alt="Event bottom visual" className="h-[230px] w-full object-cover sm:h-[340px]" />
+          </div>
+        ) : (
+          <div className="flex h-[140px] items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-500">
+            No bottom image selected.
+          </div>
+        )}
+
+        <div>
+          <input
+            ref={bottomInputRef}
+            id="bottomImageUpload"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(event) => onImageSelected(event, 'bottomImage')}
+            className="hidden"
+            disabled={isUploadingBottom}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => bottomInputRef.current?.click()}
+            isLoading={isUploadingBottom}
+          >
+            Add bottom image
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="visibility">Visibility</Label>
+            <select
+              id="visibility"
+              className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm"
+              value={form.visibility}
+              onChange={(e) => updateField('visibility', e.target.value as EventFormData['visibility'])}
+            >
+              <option value="PUBLIC">Public</option>
+              <option value="PRIVATE">Private</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="cancellationDeadlineHours">Cancellation Deadline (hours)</Label>
+            <Input
+              id="cancellationDeadlineHours"
+              type="number"
+              min={0}
+              value={form.cancellationDeadlineHours}
+              onChange={(e) => updateField('cancellationDeadlineHours', Number(e.target.value))}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <Label htmlFor="categoryIds">Category IDs (comma separated)</Label>
+            <Input
+              id="categoryIds"
+              value={form.categoryIds?.join(',') || ''}
+              onChange={(e) => {
+                const ids = e.target.value
+                  .split(',')
+                  .map((item) => item.trim())
+                  .filter(Boolean)
+                updateField('categoryIds', ids)
+              }}
+            />
+          </div>
+        </div>
+      </section>
 
       <div className="flex flex-wrap gap-3">
         <Button onClick={() => submit('save')} isLoading={isSubmitting}>

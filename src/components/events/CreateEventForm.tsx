@@ -27,6 +27,11 @@ const initialState = {
   city: '',
   country: '',
   onlineUrl: '',
+  bannerImage: '',
+  bottomImage: '',
+  speakers: '',
+  organizers: '',
+  sponsors: '',
   description: '',
 }
 
@@ -39,6 +44,8 @@ export function CreateEventForm({ categories }: CreateEventFormProps) {
   const [form, setForm] = useState(initialState)
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false)
+  const [isUploadingBottom, setIsUploadingBottom] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function updateField<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
@@ -60,6 +67,53 @@ export function CreateEventForm({ categories }: CreateEventFormProps) {
     }
 
     return null
+  }
+
+  function parseNameList(raw: string) {
+    return raw
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean)
+  }
+
+  async function uploadEventImage(file: File, targetField: 'bannerImage' | 'bottomImage') {
+    const uploadRes = await fetch('/api/upload/presigned', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder: 'events',
+        entityId: 'new',
+        filename: file.name,
+        contentType: file.type,
+        size: file.size,
+      }),
+    })
+
+    if (!uploadRes.ok) {
+      throw new Error('Failed to create upload URL')
+    }
+
+    const uploadData = await uploadRes.json()
+    const uploadUrl = uploadData?.data?.uploadUrl as string | undefined
+    const publicUrl = uploadData?.data?.publicUrl as string | undefined
+
+    if (!uploadUrl || !publicUrl) {
+      throw new Error('Invalid upload response')
+    }
+
+    const putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.type,
+      },
+      body: file,
+    })
+
+    if (!putRes.ok) {
+      throw new Error('Failed to upload image')
+    }
+
+    updateField(targetField, publicUrl)
   }
 
   async function onSubmit(action: 'save' | 'publish') {
@@ -86,6 +140,11 @@ export function CreateEventForm({ categories }: CreateEventFormProps) {
         city: form.locationType === 'ONLINE' ? null : form.city,
         country: form.locationType === 'ONLINE' ? null : form.country,
         onlineUrl: form.locationType === 'PHYSICAL' ? null : form.onlineUrl,
+        coverImage: form.bannerImage || null,
+        bottomImage: form.bottomImage || null,
+        speakerNames: parseNameList(form.speakers),
+        organizerNames: parseNameList(form.organizers),
+        sponsorNames: parseNameList(form.sponsors),
         visibility: 'PUBLIC',
         cancellationDeadlineHours: 48,
         categoryIds: selectedCategoryIds,
@@ -246,6 +305,96 @@ export function CreateEventForm({ categories }: CreateEventFormProps) {
 
         <section className="space-y-4">
           <h2 className="text-3xl font-medium text-gray-900">Additional Information</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="bannerImage">Banner image (top)</Label>
+              <Input
+                id="bannerImage"
+                type="url"
+                placeholder="https://..."
+                value={form.bannerImage}
+                onChange={(e) => updateField('bannerImage', e.target.value)}
+              />
+              <input
+                className="mt-2 text-sm"
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  try {
+                    setIsUploadingBanner(true)
+                    await uploadEventImage(file, 'bannerImage')
+                  } catch (uploadError) {
+                    setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload banner image')
+                  } finally {
+                    setIsUploadingBanner(false)
+                  }
+                }}
+              />
+              {isUploadingBanner ? <p className="mt-1 text-xs text-gray-500">Uploading...</p> : null}
+            </div>
+
+            <div>
+              <Label htmlFor="bottomImage">Bottom image</Label>
+              <Input
+                id="bottomImage"
+                type="url"
+                placeholder="https://..."
+                value={form.bottomImage}
+                onChange={(e) => updateField('bottomImage', e.target.value)}
+              />
+              <input
+                className="mt-2 text-sm"
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  try {
+                    setIsUploadingBottom(true)
+                    await uploadEventImage(file, 'bottomImage')
+                  } catch (uploadError) {
+                    setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload bottom image')
+                  } finally {
+                    setIsUploadingBottom(false)
+                  }
+                }}
+              />
+              {isUploadingBottom ? <p className="mt-1 text-xs text-gray-500">Uploading...</p> : null}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <Label htmlFor="speakers">Speakers (optional)</Label>
+              <Input
+                id="speakers"
+                value={form.speakers}
+                onChange={(e) => updateField('speakers', e.target.value)}
+                placeholder="Jane Doe, John Doe"
+              />
+            </div>
+            <div>
+              <Label htmlFor="organizers">Organizers (optional)</Label>
+              <Input
+                id="organizers"
+                value={form.organizers}
+                onChange={(e) => updateField('organizers', e.target.value)}
+                placeholder="OpenEvents Team"
+              />
+            </div>
+            <div>
+              <Label htmlFor="sponsors">Sponsors (optional)</Label>
+              <Input
+                id="sponsors"
+                value={form.sponsors}
+                onChange={(e) => updateField('sponsors', e.target.value)}
+                placeholder="Company A, Company B"
+              />
+            </div>
+          </div>
+
           <div>
             <Label htmlFor="description" required>Event Description</Label>
             <textarea

@@ -55,7 +55,11 @@ export function EventCard({ event }: EventCardProps) {
         <div className="h-44 w-full bg-gradient-to-r from-blue-500 to-indigo-600">
           {event.coverImage ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={event.coverImage} alt={event.title} className="h-full w-full object-cover" />
+            <img
+              src={`/api/events/${encodeURIComponent(event.slug)}/image?slot=cover`}
+              alt={event.title}
+              className="h-full w-full object-cover"
+            />
           ) : null}
         </div>
         <CardHeader>

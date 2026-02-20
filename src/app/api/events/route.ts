@@ -5,6 +5,24 @@ import { requireRole } from '@/lib/auth'
 import { createEventSchema } from '@/lib/validations/event'
 import { generateUniqueSlug } from '@/lib/utils'
 
+type EventPeopleRole = 'SPEAKER' | 'ORGANIZER' | 'SPONSOR'
+
+function normalizeNameList(names?: string[]): string[] {
+  return (names || []).map((name) => name.trim()).filter(Boolean)
+}
+
+function buildPeopleCreateData(names: string[], role: EventPeopleRole, sortOrderStart: number) {
+  return names.map((name, index) => ({
+    name,
+    title: role === 'SPEAKER' ? 'Speaker' : role === 'ORGANIZER' ? 'Organizer' : 'Sponsor',
+    sortOrder: sortOrderStart + index,
+    socialLinks: {
+      __kind: 'EVENT_PEOPLE',
+      role,
+    },
+  }))
+}
+
 async function ensureUniqueSlug(title: string): Promise<string> {
   let attempts = 0
 
@@ -50,7 +68,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { categoryIds = [], autoCreateFreeTicket = false, ...input } = parsed.data
+    const {
+      categoryIds = [],
+      autoCreateFreeTicket = false,
+      speakerNames,
+      organizerNames,
+      sponsorNames,
+      ...input
+    } = parsed.data
+
+    const normalizedSpeakerNames = normalizeNameList(speakerNames)
+    const normalizedOrganizerNames = normalizeNameList(organizerNames)
+    const normalizedSponsorNames = normalizeNameList(sponsorNames)
+
+    const peopleCreateData = [
+      ...buildPeopleCreateData(normalizedSpeakerNames, 'SPEAKER', 0),
+      ...buildPeopleCreateData(normalizedOrganizerNames, 'ORGANIZER', normalizedSpeakerNames.length),
+      ...buildPeopleCreateData(
+        normalizedSponsorNames,
+        'SPONSOR',
+        normalizedSpeakerNames.length + normalizedOrganizerNames.length
+      ),
+    ]
 
     if (categoryIds.length > 0) {
       const existingCategories = await prisma.category.count({
@@ -86,6 +125,23 @@ export async function POST(request: NextRequest) {
         postalCode: input.postalCode,
         onlineUrl: input.onlineUrl,
         coverImage: input.coverImage,
+        media: input.bottomImage
+          ? {
+              create: [
+                {
+                  url: input.bottomImage,
+                  type: 'IMAGE',
+                  title: 'BOTTOM_IMAGE',
+                  sortOrder: 999,
+                },
+              ],
+            }
+          : undefined,
+        speakers: peopleCreateData.length
+          ? {
+              create: peopleCreateData,
+            }
+          : undefined,
         visibility: input.visibility,
         cancellationDeadlineHours: input.cancellationDeadlineHours,
         status: 'DRAFT',

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Heart, MapPin } from 'lucide-react'
+import { getCurrentUser, hasRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
@@ -9,14 +10,35 @@ type PageProps = {
   params: Promise<{ slug: string }>
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function resolvePeopleRole(person: { title: string | null; socialLinks: unknown }) {
+  if (isRecord(person.socialLinks)) {
+    const markerKind = person.socialLinks.__kind
+    const markerRole = person.socialLinks.role
+    if (markerKind === 'EVENT_PEOPLE' && (markerRole === 'SPEAKER' || markerRole === 'ORGANIZER' || markerRole === 'SPONSOR')) {
+      return markerRole
+    }
+  }
+
+  const normalizedTitle = (person.title || '').toLowerCase()
+  if (normalizedTitle.includes('sponsor')) return 'SPONSOR'
+  if (normalizedTitle.includes('organizer') || normalizedTitle.includes('organiser')) return 'ORGANIZER'
+  return 'SPEAKER'
+}
+
 export default async function EventDetailsPage({ params }: PageProps) {
   const { slug } = await params
+  const user = await getCurrentUser()
 
   const event = await prisma.event.findUnique({
     where: { slug },
     include: {
       organizer: {
         select: {
+          userId: true,
           orgName: true,
           description: true,
           website: true,
@@ -26,10 +48,26 @@ export default async function EventDetailsPage({ params }: PageProps) {
         where: { isVisible: true },
         orderBy: { sortOrder: 'asc' },
       },
+      speakers: {
+        orderBy: { sortOrder: 'asc' },
+      },
+      media: {
+        where: { type: 'IMAGE' },
+        orderBy: { sortOrder: 'asc' },
+      },
     },
   })
 
-  if (!event || event.status !== 'PUBLISHED') {
+  if (!event) {
+    notFound()
+  }
+
+  const isOwnerOrAdmin =
+    Boolean(user) &&
+    hasRole(user.roles, ['ORGANIZER', 'SUPER_ADMIN']) &&
+    (hasRole(user.roles, 'SUPER_ADMIN') || user.id === event.organizer.userId)
+
+  if (event.status !== 'PUBLISHED' && !isOwnerOrAdmin) {
     notFound()
   }
 
@@ -44,91 +82,116 @@ export default async function EventDetailsPage({ params }: PageProps) {
     ? Math.min(...event.ticketTypes.map((ticket) => Number(ticket.price)))
     : null
   const currency = event.ticketTypes[0]?.currency || 'EUR'
+  const bottomImage = event.media.find((item) => item.title === 'BOTTOM_IMAGE')?.url || null
+  const coverImageSrc = `/api/events/${encodeURIComponent(event.slug)}/image?slot=cover&v=${event.updatedAt.getTime()}`
+  const bottomImageSrc = `/api/events/${encodeURIComponent(event.slug)}/image?slot=bottom&v=${event.updatedAt.getTime()}`
+  const priceSuffix = currency === 'SEK' ? 'kr' : currency
+
+  const dateLabel = new Date(event.startDate).toLocaleDateString(undefined, {
+    month: 'long',
+    day: 'numeric',
+  })
+  const timeLabel = new Date(event.startDate).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+
+  const speakerNames: string[] = []
+  const organizerNames: string[] = []
+  const sponsorNames: string[] = []
+
+  for (const person of event.speakers) {
+    const role = resolvePeopleRole(person)
+    if (role === 'ORGANIZER') organizerNames.push(person.name)
+    else if (role === 'SPONSOR') sponsorNames.push(person.name)
+    else speakerNames.push(person.name)
+  }
+
+  const hasPeopleSections = speakerNames.length > 0 || organizerNames.length > 0 || sponsorNames.length > 0
+  const canEditEvent = isOwnerOrAdmin
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
-      <section className="overflow-hidden rounded-2xl bg-gray-900">
+    <div className="mx-auto max-w-5xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
+      <section className="overflow-hidden rounded-xl border-4 border-blue-500 bg-gray-900">
         {event.coverImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={event.coverImage}
+            src={coverImageSrc}
             alt={event.title}
-            className="h-[260px] w-full object-cover sm:h-[380px]"
+            className="h-[230px] w-full object-cover sm:h-[340px]"
           />
         ) : (
-          <div className="h-[260px] bg-gradient-to-r from-slate-700 to-slate-900 sm:h-[380px]" />
+          <div className="h-[230px] bg-gradient-to-r from-slate-700 to-slate-900 sm:h-[340px]" />
         )}
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-6">
-        <div className="flex items-start justify-between gap-4 border-b border-gray-200 pb-5">
+      <section className="border-b border-gray-300 pb-5">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-semibold tracking-tight text-gray-900">{event.title}</h1>
-            <p className="mt-1 text-lg text-gray-600">By {event.organizer.orgName}</p>
+            <h1 className="text-4xl font-semibold tracking-tight text-gray-900 sm:text-5xl">{event.title}</h1>
+            <p className="mt-1 text-xl text-gray-800">By {event.organizer.orgName}</p>
           </div>
           <button
             type="button"
-            className="rounded-full border border-gray-300 p-2 text-gray-700 transition hover:bg-gray-50"
+            className="rounded-full p-2 text-gray-800 transition hover:bg-gray-100"
             aria-label="Save event"
           >
             <Heart className="h-6 w-6" />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 pt-5 md:grid-cols-[1fr_auto] md:items-center">
+        <div className="grid grid-cols-1 gap-6 pt-4 md:grid-cols-[1fr_auto] md:items-end">
           <div className="space-y-2">
             {event.locationType !== 'ONLINE' ? (
-              <p className="flex items-start gap-2 text-gray-700">
+              <p className="flex items-start gap-2 text-lg text-gray-900">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{locationText || 'Location TBD'}</span>
+                <span className="leading-7">{locationText || 'Location TBD'}</span>
               </p>
             ) : (
-              <p className="text-gray-700">Online event</p>
+              <p className="text-lg text-gray-900">Online event</p>
             )}
-            <p className="text-gray-700">
-              {new Date(event.startDate).toLocaleDateString(undefined, {
-                month: 'long',
-                day: 'numeric',
-              })}{' '}
-              at{' '}
-              {new Date(event.startDate).toLocaleTimeString(undefined, {
-                hour: 'numeric',
-                minute: '2-digit',
-              })}{' '}
-              GMT+1
+            <p className="text-xl text-gray-900">
+              {dateLabel} at {timeLabel} GMT+1
             </p>
           </div>
 
-          <div className="rounded-xl border border-gray-200 p-4">
-            <p className="text-lg font-medium text-gray-900">
-              {minPrice === null ? 'Free / unavailable' : `From ${currency} ${minPrice.toFixed(0)}`}
-            </p>
-            <p className="text-xs text-gray-500">
-              {new Date(event.startDate).toLocaleDateString(undefined, {
-                month: 'long',
-                day: 'numeric',
-              })}{' '}
-              at{' '}
-              {new Date(event.startDate).toLocaleTimeString(undefined, {
-                hour: 'numeric',
-                minute: '2-digit',
-              })}{' '}
-              GMT+1
-            </p>
-            <Link
-              href={`/events/${event.slug}/checkout`}
-              className="mt-3 inline-flex rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600"
-            >
-              Get tickets
-            </Link>
+          <div className="flex flex-wrap items-end gap-4 border-t border-gray-300 pt-3 md:border-t-0 md:pt-0">
+            <div>
+              <p className="text-2xl font-medium text-gray-900">
+                {minPrice === null ? 'Free / unavailable' : `From ${minPrice.toFixed(0)} ${priceSuffix}`}
+              </p>
+              <p className="text-xs text-gray-600">
+                {dateLabel} at {timeLabel} GMT+1
+              </p>
+            </div>
+            {canEditEvent ? (
+              <Link
+                href={`/dashboard/events/${event.id}/edit`}
+                className="inline-flex rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
+              >
+                Edit event
+              </Link>
+            ) : null}
+            {event.status === 'PUBLISHED' ? (
+              <Link
+                href={`/events/${event.slug}/checkout`}
+                className="inline-flex rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-600"
+              >
+                Get tickets
+              </Link>
+            ) : (
+              <span className="inline-flex rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-500">
+                Draft preview
+              </span>
+            )}
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-6">
-        <h2 className="text-5xl font-semibold tracking-tight text-gray-900">Overview</h2>
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
-          <div className="text-lg leading-8 text-gray-800">
+      <section className="border-b border-gray-300 pb-8">
+        <h2 className="text-4xl font-semibold tracking-tight text-gray-900 sm:text-5xl">Overview</h2>
+        <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_270px]">
+          <div className="text-lg leading-8 text-gray-900">
             {event.descriptionHtml ? (
               <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: event.descriptionHtml }} />
             ) : (
@@ -154,18 +217,56 @@ export default async function EventDetailsPage({ params }: PageProps) {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl bg-gray-900">
-        {event.coverImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
+      {hasPeopleSections ? (
+        <section className="border-b border-gray-300 pb-8">
+          <h2 className="text-3xl font-semibold tracking-tight text-gray-900">People</h2>
+          <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
+            {speakerNames.length > 0 ? (
+              <div className="rounded-xl border border-gray-200 p-4">
+                <h3 className="text-lg font-semibold text-gray-900">Speakers</h3>
+                <ul className="mt-3 space-y-2 text-gray-700">
+                  {speakerNames.map((name) => (
+                    <li key={`speaker-${name}`}>{name}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {organizerNames.length > 0 ? (
+              <div className="rounded-xl border border-gray-200 p-4">
+                <h3 className="text-lg font-semibold text-gray-900">Organizers</h3>
+                <ul className="mt-3 space-y-2 text-gray-700">
+                  {organizerNames.map((name) => (
+                    <li key={`organizer-${name}`}>{name}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {sponsorNames.length > 0 ? (
+              <div className="rounded-xl border border-gray-200 p-4">
+                <h3 className="text-lg font-semibold text-gray-900">Sponsors</h3>
+                <ul className="mt-3 space-y-2 text-gray-700">
+                  {sponsorNames.map((name) => (
+                    <li key={`sponsor-${name}`}>{name}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {bottomImage ? (
+        <section className="overflow-hidden rounded-none bg-gray-900">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={event.coverImage}
+            src={bottomImageSrc}
             alt={`${event.title} visual`}
-            className="h-[220px] w-full object-cover sm:h-[360px]"
+            className="h-[230px] w-full object-cover sm:h-[340px]"
           />
-        ) : (
-          <div className="h-[220px] bg-gradient-to-r from-cyan-700 via-indigo-700 to-sky-700 sm:h-[360px]" />
-        )}
-      </section>
+        </section>
+      ) : null}
     </div>
   )
 }

@@ -8,6 +8,25 @@ import { EventStatusActions } from '@/components/events/EventStatusActions'
 
 export const dynamic = 'force-dynamic'
 
+type EventPeopleRole = 'SPEAKER' | 'ORGANIZER' | 'SPONSOR'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function resolveEventPeopleRole(socialLinks: unknown): EventPeopleRole | null {
+  if (!isRecord(socialLinks)) return null
+
+  const markerKind = socialLinks.__kind
+  const markerRole = socialLinks.role
+  if (markerKind !== 'EVENT_PEOPLE') return null
+  if (markerRole === 'SPEAKER' || markerRole === 'ORGANIZER' || markerRole === 'SPONSOR') {
+    return markerRole
+  }
+
+  return null
+}
+
 type PageProps = {
   params: Promise<{ id: string }>
 }
@@ -66,12 +85,33 @@ export default async function EditEventPage({ params }: PageProps) {
           sortOrder: 'asc',
         },
       },
+      media: {
+        where: { type: 'IMAGE' },
+        orderBy: { sortOrder: 'asc' },
+      },
     },
   })
 
   if (!event) {
     notFound()
   }
+
+  const eventPeople = event.speakers.filter((speaker) => resolveEventPeopleRole(speaker.socialLinks))
+  const regularSpeakers = event.speakers.filter((speaker) => !resolveEventPeopleRole(speaker.socialLinks))
+  const bottomImage = event.media.find((item) => item.title === 'BOTTOM_IMAGE')?.url || ''
+
+  const speakerNames = eventPeople
+    .filter((speaker) => resolveEventPeopleRole(speaker.socialLinks) === 'SPEAKER')
+    .map((speaker) => speaker.name)
+    .join(', ')
+  const organizerNames = eventPeople
+    .filter((speaker) => resolveEventPeopleRole(speaker.socialLinks) === 'ORGANIZER')
+    .map((speaker) => speaker.name)
+    .join(', ')
+  const sponsorNames = eventPeople
+    .filter((speaker) => resolveEventPeopleRole(speaker.socialLinks) === 'SPONSOR')
+    .map((speaker) => speaker.name)
+    .join(', ')
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-10">
@@ -98,6 +138,10 @@ export default async function EditEventPage({ params }: PageProps) {
           postalCode: event.postalCode,
           onlineUrl: event.onlineUrl,
           coverImage: event.coverImage,
+          bottomImage,
+          speakerNames,
+          organizerNames,
+          sponsorNames,
           visibility: event.visibility,
           cancellationDeadlineHours: event.cancellationDeadlineHours,
           categoryIds: event.categories.map((item) => item.categoryId),
@@ -107,7 +151,7 @@ export default async function EditEventPage({ params }: PageProps) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <SpeakerEditor
           eventId={event.id}
-          initialSpeakers={event.speakers.map((speaker) => ({
+          initialSpeakers={regularSpeakers.map((speaker) => ({
             id: speaker.id,
             name: speaker.name,
             title: speaker.title,
@@ -118,7 +162,7 @@ export default async function EditEventPage({ params }: PageProps) {
         />
         <AgendaEditor
           eventId={event.id}
-          speakers={event.speakers.map((speaker) => ({ id: speaker.id, name: speaker.name }))}
+          speakers={regularSpeakers.map((speaker) => ({ id: speaker.id, name: speaker.name }))}
           initialItems={event.agendaItems.map((item) => ({
             id: item.id,
             title: item.title,
