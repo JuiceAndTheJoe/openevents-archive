@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,11 @@ type EventFormMode = 'create' | 'edit'
 
 type EventFormData = {
   id?: string
+  ticketTypeId?: string
+  ticketTypeName?: string
+  ticketPrice?: string
+  ticketCurrency?: string
+  ticketCapacity?: string
   title: string
   description?: string | null
   descriptionHtml?: string | null
@@ -40,6 +45,11 @@ type EventFormProps = {
 }
 
 const fallbackInitialData: EventFormData = {
+  ticketTypeId: '',
+  ticketTypeName: 'General Admission',
+  ticketPrice: '0',
+  ticketCurrency: 'SEK',
+  ticketCapacity: '',
   title: '',
   description: '',
   descriptionHtml: '',
@@ -82,10 +92,19 @@ function parseNameList(raw?: string | null): string[] {
     .filter(Boolean)
 }
 
+function parseTicketPrice(raw?: string): number | null {
+  if (!raw?.trim()) return null
+  const parsed = Number(raw)
+  if (Number.isNaN(parsed)) return null
+  return parsed
+}
+
 export function EventForm({ mode, initialData }: EventFormProps) {
   const router = useRouter()
   const bannerInputRef = useRef<HTMLInputElement | null>(null)
   const bottomInputRef = useRef<HTMLInputElement | null>(null)
+  const bannerObjectUrlRef = useRef<string | null>(null)
+  const bottomObjectUrlRef = useRef<string | null>(null)
   const mergedInitialData = useMemo(() => ({ ...fallbackInitialData, ...initialData }), [initialData])
 
   const [form, setForm] = useState<EventFormData>({
@@ -98,10 +117,53 @@ export function EventForm({ mode, initialData }: EventFormProps) {
   const [isUploadingBanner, setIsUploadingBanner] = useState(false)
   const [isUploadingBottom, setIsUploadingBottom] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [bannerPreviewSrc, setBannerPreviewSrc] = useState<string | null>(null)
+  const [bottomPreviewSrc, setBottomPreviewSrc] = useState<string | null>(null)
+  const [imageVersion, setImageVersion] = useState(0)
 
   const updateField = <K extends keyof EventFormData>(key: K, value: EventFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }))
   }
+
+  function cleanupObjectUrl(targetField: 'coverImage' | 'bottomImage') {
+    if (targetField === 'coverImage') {
+      if (bannerObjectUrlRef.current) {
+        URL.revokeObjectURL(bannerObjectUrlRef.current)
+        bannerObjectUrlRef.current = null
+      }
+      return
+    }
+
+    if (bottomObjectUrlRef.current) {
+      URL.revokeObjectURL(bottomObjectUrlRef.current)
+      bottomObjectUrlRef.current = null
+    }
+  }
+
+  function setLocalPreview(file: File, targetField: 'coverImage' | 'bottomImage') {
+    const objectUrl = URL.createObjectURL(file)
+    cleanupObjectUrl(targetField)
+
+    if (targetField === 'coverImage') {
+      bannerObjectUrlRef.current = objectUrl
+      setBannerPreviewSrc(objectUrl)
+      return
+    }
+
+    bottomObjectUrlRef.current = objectUrl
+    setBottomPreviewSrc(objectUrl)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (bannerObjectUrlRef.current) {
+        URL.revokeObjectURL(bannerObjectUrlRef.current)
+      }
+      if (bottomObjectUrlRef.current) {
+        URL.revokeObjectURL(bottomObjectUrlRef.current)
+      }
+    }
+  }, [])
 
   async function uploadEventImage(file: File, targetField: 'coverImage' | 'bottomImage') {
     if (!form.id && mode === 'edit') {
@@ -147,6 +209,103 @@ export function EventForm({ mode, initialData }: EventFormProps) {
     updateField(targetField, publicUrl)
   }
 
+  async function upsertPrimaryTicketType(eventId: string, requireComplete: boolean) {
+    const ticketName = (form.ticketTypeName || '').trim()
+    const ticketPrice = parseTicketPrice(form.ticketPrice)
+    const normalizedCurrency = (form.ticketCurrency || 'SEK').trim().toUpperCase()
+    const capacityRaw = (form.ticketCapacity || '').trim()
+    const maxCapacity = capacityRaw ? Number(capacityRaw) : null
+
+    if (requireComplete && !ticketName) {
+      throw new Error('Tickets -> Ticket Name: Enter a ticket name.')
+    }
+
+    if (requireComplete && (ticketPrice === null || ticketPrice < 0)) {
+      throw new Error('Tickets -> Ticket Price: Enter a valid price (0 or greater).')
+    }
+
+    if (requireComplete && !normalizedCurrency) {
+      throw new Error('Tickets -> Currency: Enter a currency code (for example SEK).')
+    }
+
+    if (!requireComplete) {
+      const hasAnyTicketInput =
+        Boolean(form.ticketTypeId) ||
+        Boolean(ticketName) ||
+        Boolean((form.ticketPrice || '').trim()) ||
+        Boolean((form.ticketCurrency || '').trim()) ||
+        Boolean(capacityRaw)
+
+      if (!hasAnyTicketInput) return
+      if (!ticketName || ticketPrice === null || !normalizedCurrency) return
+    }
+
+    if (maxCapacity !== null && (!Number.isInteger(maxCapacity) || maxCapacity < 1)) {
+      throw new Error('Tickets -> Capacity: Enter a whole number greater than 0, or leave empty.')
+    }
+
+    const payload = {
+      name: ticketName,
+      price: ticketPrice,
+      currency: normalizedCurrency,
+      maxCapacity,
+      isVisible: true,
+      minPerOrder: 1,
+      maxPerOrder: 10,
+      sortOrder: 0,
+    }
+
+    const hasExistingTicketType = Boolean(form.ticketTypeId)
+    const endpoint = hasExistingTicketType
+      ? `/api/events/${eventId}/ticket-types/${form.ticketTypeId}`
+      : `/api/events/${eventId}/ticket-types`
+    const method = hasExistingTicketType ? 'PATCH' : 'POST'
+
+    const response = await fetch(endpoint, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    const json = await response.json()
+    if (!response.ok) {
+      throw new Error(json?.error || 'Failed to save ticket type')
+    }
+
+    if (!hasExistingTicketType && json?.ticketType?.id) {
+      updateField('ticketTypeId', json.ticketType.id)
+    }
+  }
+
+  function validateBeforePublish(): string | null {
+    const issues: string[] = []
+
+    if (!form.title?.trim()) issues.push('Event Header -> Title: Enter an event title.')
+    if (!form.startDate?.trim()) issues.push('Event Header -> Start: Set start date and time.')
+    if (!form.endDate?.trim()) issues.push('Event Header -> End: Set end date and time.')
+    if (!form.timezone?.trim()) issues.push('Event Header -> Timezone: Enter a timezone.')
+    if (!form.description?.trim()) issues.push('Overview -> Description: Add an event description.')
+
+    if (form.locationType !== 'ONLINE') {
+      if (!form.venue?.trim()) issues.push('Location -> Venue: Enter venue.')
+      if (!form.city?.trim()) issues.push('Location -> City: Enter city.')
+      if (!form.country?.trim()) issues.push('Location -> Country: Enter country.')
+    }
+
+    if ((form.locationType === 'ONLINE' || form.locationType === 'HYBRID') && !form.onlineUrl?.trim()) {
+      issues.push('Location -> Online URL: Enter an online URL.')
+    }
+
+    if (!form.ticketTypeName?.trim()) issues.push('Tickets -> Ticket Name: Enter ticket name.')
+    if (parseTicketPrice(form.ticketPrice) === null || (parseTicketPrice(form.ticketPrice) ?? 0) < 0) {
+      issues.push('Tickets -> Ticket Price: Enter a valid price (0 or greater).')
+    }
+    if (!form.ticketCurrency?.trim()) issues.push('Tickets -> Currency: Enter a currency code.')
+
+    if (issues.length === 0) return null
+    return `Cannot publish yet. Fix the following:\n- ${issues.join('\n- ')}`
+  }
+
   async function onImageSelected(event: ChangeEvent<HTMLInputElement>, targetField: 'coverImage' | 'bottomImage') {
     const file = event.target.files?.[0]
     if (!file) return
@@ -157,6 +316,8 @@ export function EventForm({ mode, initialData }: EventFormProps) {
       return
     }
 
+    setLocalPreview(file, targetField)
+
     if (targetField === 'coverImage') {
       setIsUploadingBanner(true)
     } else {
@@ -165,6 +326,7 @@ export function EventForm({ mode, initialData }: EventFormProps) {
 
     try {
       await uploadEventImage(file, targetField)
+      setImageVersion((version) => version + 1)
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Upload failed')
     } finally {
@@ -178,6 +340,14 @@ export function EventForm({ mode, initialData }: EventFormProps) {
   }
 
   async function submit(action: 'save' | 'publish') {
+    if (action === 'publish') {
+      const publishValidationError = validateBeforePublish()
+      if (publishValidationError) {
+        setError(publishValidationError)
+        return
+      }
+    }
+
     setIsSubmitting(true)
     setError(null)
 
@@ -218,6 +388,10 @@ export function EventForm({ mode, initialData }: EventFormProps) {
 
       const eventId = eventJson?.data?.id || form.id
 
+      if (eventId) {
+        await upsertPrimaryTicketType(eventId, action === 'publish')
+      }
+
       if (action === 'publish' && eventId) {
         const publishRes = await fetch(`/api/events/${eventId}/publish`, {
           method: 'POST',
@@ -230,6 +404,8 @@ export function EventForm({ mode, initialData }: EventFormProps) {
       }
 
       if (eventId) {
+        cleanupObjectUrl('coverImage')
+        cleanupObjectUrl('bottomImage')
         router.push(`/dashboard/events/${eventId}/edit`)
       } else {
         router.refresh()
@@ -241,6 +417,17 @@ export function EventForm({ mode, initialData }: EventFormProps) {
     }
   }
 
+  const remoteBannerPreviewSrc =
+    mode === 'edit' && form.id && form.coverImage
+      ? `/api/events/${encodeURIComponent(form.id)}/image?slot=cover&v=${imageVersion}`
+      : null
+  const remoteBottomPreviewSrc =
+    mode === 'edit' && form.id && form.bottomImage
+      ? `/api/events/${encodeURIComponent(form.id)}/image?slot=bottom&v=${imageVersion}`
+      : null
+  const bannerImageSrc = bannerPreviewSrc || remoteBannerPreviewSrc
+  const bottomImageSrc = bottomPreviewSrc || remoteBottomPreviewSrc
+
   return (
     <div className="space-y-8 px-1 sm:px-0">
       <h2 className="text-3xl font-semibold tracking-tight text-gray-900">
@@ -248,13 +435,13 @@ export function EventForm({ mode, initialData }: EventFormProps) {
       </h2>
 
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="whitespace-pre-line rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       ) : null}
 
       <section className="overflow-hidden rounded-xl border-4 border-blue-500 bg-gray-900">
-        {form.coverImage ? (
+        {bannerImageSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={form.coverImage} alt="Event banner" className="h-[230px] w-full object-cover sm:h-[340px]" />
+          <img src={bannerImageSrc} alt="Event banner" className="h-[230px] w-full object-cover sm:h-[340px]" />
         ) : (
           <div className="h-[230px] bg-gradient-to-r from-slate-700 to-slate-900 sm:h-[340px]" />
         )}
@@ -296,7 +483,7 @@ export function EventForm({ mode, initialData }: EventFormProps) {
             <Input id="endDate" type="datetime-local" value={form.endDate} onChange={(e) => updateField('endDate', e.target.value)} />
           </div>
           <div>
-            <Label htmlFor="timezone">Timezone</Label>
+            <Label htmlFor="timezone" required>Timezone</Label>
             <Input id="timezone" value={form.timezone} onChange={(e) => updateField('timezone', e.target.value)} />
           </div>
           <div>
@@ -315,7 +502,7 @@ export function EventForm({ mode, initialData }: EventFormProps) {
           {form.locationType !== 'ONLINE' ? (
             <>
               <div>
-                <Label htmlFor="venue">Venue</Label>
+                <Label htmlFor="venue" required>Venue</Label>
                 <Input id="venue" value={form.venue || ''} onChange={(e) => updateField('venue', e.target.value)} />
               </div>
               <div>
@@ -323,7 +510,7 @@ export function EventForm({ mode, initialData }: EventFormProps) {
                 <Input id="address" value={form.address || ''} onChange={(e) => updateField('address', e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="city">City</Label>
+                <Label htmlFor="city" required>City</Label>
                 <Input id="city" value={form.city || ''} onChange={(e) => updateField('city', e.target.value)} />
               </div>
               <div>
@@ -331,7 +518,7 @@ export function EventForm({ mode, initialData }: EventFormProps) {
                 <Input id="state" value={form.state || ''} onChange={(e) => updateField('state', e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="country">Country</Label>
+                <Label htmlFor="country" required>Country</Label>
                 <Input id="country" value={form.country || ''} onChange={(e) => updateField('country', e.target.value)} />
               </div>
               <div>
@@ -342,7 +529,7 @@ export function EventForm({ mode, initialData }: EventFormProps) {
           ) : null}
           {(form.locationType === 'ONLINE' || form.locationType === 'HYBRID') ? (
             <div className="md:col-span-2">
-              <Label htmlFor="onlineUrl">Online URL</Label>
+              <Label htmlFor="onlineUrl" required>Online URL</Label>
               <Input id="onlineUrl" value={form.onlineUrl || ''} onChange={(e) => updateField('onlineUrl', e.target.value)} />
             </div>
           ) : null}
@@ -406,12 +593,60 @@ export function EventForm({ mode, initialData }: EventFormProps) {
         </div>
       </section>
 
+      <section className="space-y-5 border-b border-gray-300 pb-6">
+        <h3 className="text-3xl font-semibold text-gray-900">Tickets</h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="md:col-span-2">
+            <Label htmlFor="ticketTypeName" required>Ticket Name</Label>
+            <Input
+              id="ticketTypeName"
+              value={form.ticketTypeName || ''}
+              onChange={(e) => updateField('ticketTypeName', e.target.value)}
+              placeholder="General Admission"
+            />
+          </div>
+          <div>
+            <Label htmlFor="ticketPrice" required>Ticket Price</Label>
+            <Input
+              id="ticketPrice"
+              type="number"
+              min={0}
+              step="0.01"
+              value={form.ticketPrice || ''}
+              onChange={(e) => updateField('ticketPrice', e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <Label htmlFor="ticketCurrency" required>Currency</Label>
+            <Input
+              id="ticketCurrency"
+              value={form.ticketCurrency || ''}
+              onChange={(e) => updateField('ticketCurrency', e.target.value)}
+              placeholder="SEK"
+            />
+          </div>
+          <div>
+            <Label htmlFor="ticketCapacity">Capacity (optional)</Label>
+            <Input
+              id="ticketCapacity"
+              type="number"
+              min={1}
+              step={1}
+              value={form.ticketCapacity || ''}
+              onChange={(e) => updateField('ticketCapacity', e.target.value)}
+              placeholder="Leave empty for unlimited"
+            />
+          </div>
+        </div>
+      </section>
+
       <section className="space-y-5">
         <h3 className="text-3xl font-semibold text-gray-900">Bottom Visual</h3>
-        {form.bottomImage ? (
+        {bottomImageSrc ? (
           <div className="overflow-hidden rounded-none bg-gray-900">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={form.bottomImage} alt="Event bottom visual" className="h-[230px] w-full object-cover sm:h-[340px]" />
+            <img src={bottomImageSrc} alt="Event bottom visual" className="h-[230px] w-full object-cover sm:h-[340px]" />
           </div>
         ) : (
           <div className="flex h-[140px] items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-500">

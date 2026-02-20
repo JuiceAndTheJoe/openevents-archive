@@ -6,6 +6,17 @@ type RouteContext = {
   params: Promise<{ id: string }>
 }
 
+type PublishIssue = {
+  section: string
+  field: string
+  message: string
+}
+
+function formatPublishError(issues: PublishIssue[]): string {
+  const lines = issues.map((issue) => `${issue.section} -> ${issue.field}: ${issue.message}`)
+  return `Cannot publish yet. Fix the following:\n- ${lines.join('\n- ')}`
+}
+
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const user = await requireRole('ORGANIZER')
@@ -42,35 +53,103 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       )
     }
 
-    const missingFields: string[] = []
+    const issues: PublishIssue[] = []
 
-    if (!event.title?.trim()) missingFields.push('title')
-    if (!event.description?.trim()) missingFields.push('description')
-    if (!event.startDate) missingFields.push('startDate')
-    if (!event.endDate) missingFields.push('endDate')
-    if (!event.timezone?.trim()) missingFields.push('timezone')
+    if (!event.title?.trim()) {
+      issues.push({
+        section: 'Event Header',
+        field: 'Title',
+        message: 'Enter an event title.',
+      })
+    }
 
-    if (event.endDate <= event.startDate) missingFields.push('endDate_after_startDate')
+    if (!event.description?.trim()) {
+      issues.push({
+        section: 'Overview',
+        field: 'Description',
+        message: 'Add an event description.',
+      })
+    }
+
+    if (!event.startDate) {
+      issues.push({
+        section: 'Event Header',
+        field: 'Start',
+        message: 'Set a start date and time.',
+      })
+    }
+
+    if (!event.endDate) {
+      issues.push({
+        section: 'Event Header',
+        field: 'End',
+        message: 'Set an end date and time.',
+      })
+    }
+
+    if (!event.timezone?.trim()) {
+      issues.push({
+        section: 'Event Header',
+        field: 'Timezone',
+        message: 'Set the event timezone.',
+      })
+    }
+
+    if (event.endDate <= event.startDate) {
+      issues.push({
+        section: 'Event Header',
+        field: 'End',
+        message: 'End time must be after start time.',
+      })
+    }
 
     if (event.locationType === 'PHYSICAL') {
-      if (!event.venue?.trim()) missingFields.push('venue')
-      if (!event.city?.trim()) missingFields.push('city')
-      if (!event.country?.trim()) missingFields.push('country')
+      if (!event.venue?.trim()) {
+        issues.push({
+          section: 'Location',
+          field: 'Venue',
+          message: 'Add a venue for a physical event.',
+        })
+      }
+      if (!event.city?.trim()) {
+        issues.push({
+          section: 'Location',
+          field: 'City',
+          message: 'Add a city for a physical event.',
+        })
+      }
+      if (!event.country?.trim()) {
+        issues.push({
+          section: 'Location',
+          field: 'Country',
+          message: 'Add a country for a physical event.',
+        })
+      }
     }
 
     if (event.locationType === 'ONLINE' || event.locationType === 'HYBRID') {
-      if (!event.onlineUrl?.trim()) missingFields.push('onlineUrl')
+      if (!event.onlineUrl?.trim()) {
+        issues.push({
+          section: 'Location',
+          field: 'Online URL',
+          message: 'Add an online URL for online/hybrid events.',
+        })
+      }
     }
 
     if (event._count.ticketTypes < 1) {
-      missingFields.push('ticketTypes')
+      issues.push({
+        section: 'Tickets',
+        field: 'Ticket types',
+        message: 'Create at least one ticket type before publishing.',
+      })
     }
 
-    if (missingFields.length > 0) {
+    if (issues.length > 0) {
       return NextResponse.json(
         {
-          error: 'Event is missing required fields for publishing',
-          missingFields,
+          error: formatPublishError(issues),
+          details: issues,
         },
         { status: 400 }
       )

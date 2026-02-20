@@ -85,6 +85,10 @@ export default async function EditEventPage({ params }: PageProps) {
           sortOrder: 'asc',
         },
       },
+      ticketTypes: {
+        where: { isVisible: true },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      },
       media: {
         where: { type: 'IMAGE' },
         orderBy: { sortOrder: 'asc' },
@@ -112,6 +116,7 @@ export default async function EditEventPage({ params }: PageProps) {
     .filter((speaker) => resolveEventPeopleRole(speaker.socialLinks) === 'SPONSOR')
     .map((speaker) => speaker.name)
     .join(', ')
+  const primaryTicketType = event.ticketTypes[0]
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-10">
@@ -123,6 +128,11 @@ export default async function EditEventPage({ params }: PageProps) {
         mode="edit"
         initialData={{
           id: event.id,
+          ticketTypeId: primaryTicketType?.id || '',
+          ticketTypeName: primaryTicketType?.name || 'General Admission',
+          ticketPrice: primaryTicketType ? Number(primaryTicketType.price).toString() : '0',
+          ticketCurrency: primaryTicketType?.currency || 'SEK',
+          ticketCapacity: primaryTicketType?.maxCapacity ? String(primaryTicketType.maxCapacity) : '',
           title: event.title,
           description: event.description,
           descriptionHtml: event.descriptionHtml,
