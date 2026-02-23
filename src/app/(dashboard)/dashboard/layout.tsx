@@ -24,6 +24,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <aside className="h-fit rounded-xl border border-gray-200 bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Organizer</h2>
         <nav className="mt-3 space-y-1 text-sm">
+          <Link href="/dashboard/scan" className="block rounded-md bg-blue-600 px-3 py-2 font-semibold text-white hover:bg-blue-700">Scan Tickets</Link>
           <Link href="/dashboard" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-gray-50">Overview</Link>
           <Link href="/dashboard/events" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-gray-50">Events</Link>
           <Link href="/dashboard/settings" className="block rounded-md px-3 py-2 text-gray-700 hover:bg-gray-50">Profile Settings</Link>

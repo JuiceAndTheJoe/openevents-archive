@@ -80,6 +80,14 @@ export function Header() {
                 My Events
               </Link>
             )}
+            {canAccessMyEvents && (
+              <Link
+                href="/dashboard/scan"
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Scan Tickets
+              </Link>
+            )}
 
             {status === 'authenticated' ? (
               <>
@@ -229,6 +237,15 @@ export function Header() {
                 onClick={() => setMobileMenuOpen(false)}
               >
                 My Events
+              </Link>
+            )}
+            {canAccessMyEvents && (
+              <Link
+                href="/dashboard/scan"
+                className="block rounded-md bg-blue-600 px-3 py-2 font-semibold text-white hover:bg-blue-700"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Scan Tickets
               </Link>
             )}
 
