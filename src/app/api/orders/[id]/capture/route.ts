@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma, PaymentMethod } from '@prisma/client'
+import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 import { capturePayment, getPaymentStatus } from '@/lib/payments'
@@ -21,6 +22,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { id: orderId } = await context.params
     const { searchParams } = new URL(request.url)
     const paypalToken = searchParams.get('token')
+    const user = await requireAuth()
+
+    if (!paypalToken) {
+      return NextResponse.redirect(`${APP_URL}/checkout-error?error=invalid_token`)
+    }
 
     // Find the order
     const order = await prisma.order.findUnique({
@@ -56,8 +62,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.redirect(`${APP_URL}/checkout-error?error=order_not_found`)
     }
 
+    if (order.userId !== user.id) {
+      console.error('[Capture] Forbidden order capture attempt:', {
+        orderId: order.id,
+        orderUserId: order.userId,
+        requesterUserId: user.id,
+      })
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     // Verify the PayPal token matches
-    if (paypalToken && order.paymentId !== paypalToken) {
+    if (order.paymentId !== paypalToken) {
       console.error('[Capture] Token mismatch:', { expected: order.paymentId, received: paypalToken })
       return NextResponse.redirect(`${APP_URL}/checkout-error?error=invalid_token`)
     }
@@ -239,6 +254,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // Redirect to confirmation page
     return NextResponse.redirect(`${APP_URL}/orders/${paidOrder.orderNumber}/confirmation`)
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     console.error('[Capture] Failed to capture payment:', error)
     return NextResponse.redirect(`${APP_URL}/checkout-error?error=capture_exception`)
   }
