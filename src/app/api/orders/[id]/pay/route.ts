@@ -29,7 +29,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const user = await requireAuth()
 
     const body = await request.json().catch(() => ({}))
-    console.log('[Pay] Request body:', body)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Pay] Processing order:', orderId)
+    }
     const parsed = payOrderSchema.safeParse(body)
 
     if (!parsed.success) {

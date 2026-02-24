@@ -22,7 +22,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { email, password, firstName, lastName, role } = validationResult.data
+    // Only extract safe fields - ignore any role from client to prevent privilege escalation
+    // Users must use /api/users/request-organizer for role upgrades
+    const { email, password, firstName, lastName } = validationResult.data
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -58,23 +60,14 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // Assign selected role
+      // Always assign ATTENDEE role - never trust client-provided role
+      // Users must use /api/users/request-organizer for role upgrades
       await tx.userRole.create({
         data: {
           userId: newUser.id,
-          role,
+          role: 'ATTENDEE',
         },
       })
-
-      // Create organizer profile immediately for organizer signups
-      if (role === 'ORGANIZER') {
-        await tx.organizerProfile.create({
-          data: {
-            userId: newUser.id,
-            orgName: `${firstName} ${lastName}`.trim(),
-          },
-        })
-      }
 
       // Create verification token
       await tx.userVerificationToken.create({
