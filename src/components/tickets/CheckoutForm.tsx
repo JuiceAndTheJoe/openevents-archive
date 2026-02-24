@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { DiscountCodeInput, type AppliedDiscount } from '@/components/tickets/DiscountCodeInput'
 import { OrderSummary, type SummaryLineItem } from '@/components/tickets/OrderSummary'
 import { TicketSelector, type SelectableTicketType } from '@/components/tickets/TicketSelector'
+import { getClientOrderReservationTtlMinutes } from '@/lib/orders/reservation'
 
 interface CheckoutFormProps {
   event: {
@@ -30,6 +31,18 @@ interface BuyerFormState {
   city: string
   postalCode: string
   country: string
+}
+
+interface AttendeeFormState {
+  firstName: string
+  lastName: string
+  email: string
+  title: string
+  organization: string
+}
+
+function emptyAttendee(): AttendeeFormState {
+  return { firstName: '', lastName: '', email: '', title: '', organization: '' }
 }
 
 function calculateDiscountAmount(
@@ -59,6 +72,14 @@ function calculateDiscountAmount(
   return 0
 }
 
+function formatRemainingTime(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, totalSeconds)
+  const minutes = Math.floor(safeSeconds / 60)
+  const seconds = safeSeconds % 60
+
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
 export function CheckoutForm({ event }: CheckoutFormProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -73,18 +94,26 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [reservationTtlMinutes, setReservationTtlMinutes] = useState(() =>
+    getClientOrderReservationTtlMinutes()
+  )
+  const [reservationExpiresAt, setReservationExpiresAt] = useState<Date | null>(null)
+  const [reservationSecondsRemaining, setReservationSecondsRemaining] = useState<number | null>(null)
+  const hasExpiryRedirectedRef = useRef(false)
 
-  // Check if user returned from cancelled PayPal payment
+  // Map of ticketTypeId -> AttendeeFormState[]
+  const [attendeesByType, setAttendeesByType] = useState<Record<string, AttendeeFormState[]>>({})
+
   const wasCancelled = searchParams.get('cancelled') === 'true'
+  const wasExpired = searchParams.get('expired') === 'true'
 
-  // Check if user is authenticated
   const isAuthenticated = status === 'authenticated'
   const isLoadingAuth = status === 'loading'
 
   const [buyer, setBuyer] = useState<BuyerFormState>({
     firstName: '',
     lastName: '',
-    email: '',
+    email: session?.user?.email ?? '',
     title: '',
     organization: '',
     address: '',
@@ -92,6 +121,7 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
     postalCode: '',
     country: '',
   })
+  const reservationStorageKey = `checkout-reservation:${event.id}`
 
   const [paymentMethod, setPaymentMethod] = useState<'PAYPAL' | 'INVOICE'>('PAYPAL')
 
@@ -166,11 +196,149 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
     [selectedItems]
   )
 
+  // Keep attendeesByType in sync when quantities change
+  useEffect(() => {
+    setAttendeesByType((current) => {
+      const updated: Record<string, AttendeeFormState[]> = {}
+
+      for (const item of selectedItems) {
+        const existing = current[item.ticketTypeId] ?? []
+        const needed = item.quantity
+
+        if (existing.length >= needed) {
+          // Trim extras
+          updated[item.ticketTypeId] = existing.slice(0, needed)
+        } else {
+          // Add empty slots for new tickets
+          const added = Array.from({ length: needed - existing.length }, emptyAttendee)
+          updated[item.ticketTypeId] = [...existing, ...added]
+        }
+      }
+
+      return updated
+    })
+  }, [selectedItems])
+
+  // Pre-fill first attendee slot of the first ticket type with buyer info
+  useEffect(() => {
+    if (selectedItems.length === 0) return
+
+    const firstTypeId = selectedItems[0].ticketTypeId
+
+    setAttendeesByType((current) => {
+      const slots = current[firstTypeId]
+      if (!slots || slots.length === 0) return current
+
+      // Only auto-update if the slot looks empty or still matches old buyer info
+      const first = slots[0]
+      const looksUnedited =
+        first.firstName === '' ||
+        first.firstName === buyer.firstName
+
+      if (!looksUnedited) return current
+
+      return {
+        ...current,
+        [firstTypeId]: [
+          {
+            ...first,
+            firstName: buyer.firstName,
+            lastName: buyer.lastName,
+            email: buyer.email,
+            title: buyer.title,
+            organization: buyer.organization,
+          },
+          ...slots.slice(1),
+        ],
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buyer.firstName, buyer.lastName, buyer.email, buyer.title, buyer.organization])
+
   useEffect(() => {
     if (discount?.discountType === 'INVOICE') {
       setPaymentMethod('INVOICE')
     }
   }, [discount])
+
+  useEffect(() => {
+    const accountEmail = session?.user?.email?.trim()
+    if (!accountEmail) return
+
+    setBuyer((current) => (
+      current.email === accountEmail
+        ? current
+        : { ...current, email: accountEmail }
+    ))
+  }, [session?.user?.email])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (wasCancelled || wasExpired) {
+      window.localStorage.removeItem(reservationStorageKey)
+      return
+    }
+
+    const persistedExpiry = window.localStorage.getItem(reservationStorageKey)
+    if (!persistedExpiry) return
+
+    const parsedExpiry = new Date(persistedExpiry)
+    if (Number.isNaN(parsedExpiry.getTime()) || parsedExpiry.getTime() <= Date.now()) {
+      window.localStorage.removeItem(reservationStorageKey)
+      return
+    }
+
+    setReservationExpiresAt(parsedExpiry)
+  }, [reservationStorageKey, wasCancelled, wasExpired])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (reservationExpiresAt) {
+      window.localStorage.setItem(reservationStorageKey, reservationExpiresAt.toISOString())
+      return
+    }
+
+    window.localStorage.removeItem(reservationStorageKey)
+  }, [reservationExpiresAt, reservationStorageKey])
+
+  useEffect(() => {
+    if (!reservationExpiresAt) {
+      setReservationSecondsRemaining(null)
+      hasExpiryRedirectedRef.current = false
+      return
+    }
+
+    const updateRemaining = () => {
+      const remainingSeconds = Math.ceil((reservationExpiresAt.getTime() - Date.now()) / 1000)
+      if (remainingSeconds <= 0) {
+        setReservationSecondsRemaining(0)
+        setReservationExpiresAt(null)
+
+        if (!hasExpiryRedirectedRef.current) {
+          hasExpiryRedirectedRef.current = true
+          setSubmitError('Your reservation expired. Please start checkout again.')
+          router.replace(`/events/${event.slug}/checkout?expired=true`)
+        }
+
+        return true
+      }
+
+      setReservationSecondsRemaining(remainingSeconds)
+      return false
+    }
+
+    if (updateRemaining()) {
+      return
+    }
+
+    const interval = window.setInterval(updateRemaining, 1000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [event.slug, reservationExpiresAt, router])
 
   function handleQuantityChange(ticketTypeId: string, quantity: number) {
     setQuantities((current) => ({
@@ -186,6 +354,20 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
     }))
   }
 
+  function updateAttendeeField(
+    ticketTypeId: string,
+    index: number,
+    field: keyof AttendeeFormState,
+    value: string
+  ) {
+    setAttendeesByType((current) => {
+      const slots = current[ticketTypeId] ? [...current[ticketTypeId]] : []
+      if (!slots[index]) return current
+      slots[index] = { ...slots[index], [field]: value }
+      return { ...current, [ticketTypeId]: slots }
+    })
+  }
+
   async function handleSubmit(eventForm: FormEvent<HTMLFormElement>) {
     eventForm.preventDefault()
 
@@ -194,13 +376,35 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
       return
     }
 
-    if (!buyer.firstName || !buyer.lastName || !buyer.email) {
-      setSubmitError('First name, last name, and email are required')
+    const accountEmail = session?.user?.email?.trim() || buyer.email.trim()
+
+    if (!buyer.firstName || !buyer.lastName) {
+      setSubmitError('First name and last name are required')
       return
+    }
+
+    if (!accountEmail) {
+      setSubmitError('Your account does not have an email address. Please update your profile.')
+      return
+    }
+
+    // Validate all attendee slots are filled
+    for (const item of selectedItems) {
+      const slots = attendeesByType[item.ticketTypeId] ?? []
+      for (let i = 0; i < item.quantity; i++) {
+        const a = slots[i]
+        if (!a || !a.firstName || !a.lastName || !a.email) {
+          const ticketName = ticketTypes.find((t) => t.id === item.ticketTypeId)?.name ?? 'ticket'
+          setSubmitError(`Please fill in all attendee details for "${ticketName}" (ticket ${i + 1})`)
+          return
+        }
+      }
     }
 
     setIsSubmitting(true)
     setSubmitError(null)
+    setReservationExpiresAt(null)
+    setReservationSecondsRemaining(null)
 
     try {
       const createOrderResponse = await fetch('/api/orders', {
@@ -213,8 +417,12 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
           items: selectedItems.map((item) => ({
             ticketTypeId: item.ticketTypeId,
             quantity: item.quantity,
+            attendees: (attendeesByType[item.ticketTypeId] ?? []).slice(0, item.quantity),
           })),
-          buyer,
+          buyer: {
+            ...buyer,
+            email: accountEmail,
+          },
           discountCode: discount?.code,
         }),
       })
@@ -227,6 +435,20 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
       }
 
       const orderNumber = createOrderData.order.orderNumber as string
+      const nextReservationTtl = createOrderData.checkout?.reservationTtlMinutes
+      if (typeof nextReservationTtl === 'number' && nextReservationTtl > 0) {
+        setReservationTtlMinutes(Math.floor(nextReservationTtl))
+      }
+
+      if (createOrderData.checkout?.requiresPayment) {
+        const rawReservationExpiresAt = createOrderData.checkout?.reservationExpiresAt
+        if (typeof rawReservationExpiresAt === 'string') {
+          const parsedReservationExpiresAt = new Date(rawReservationExpiresAt)
+          if (!Number.isNaN(parsedReservationExpiresAt.getTime())) {
+            setReservationExpiresAt(parsedReservationExpiresAt)
+          }
+        }
+      }
 
       // Handle different checkout flows
       if (createOrderData.checkout.requiresPayment) {
@@ -248,7 +470,6 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
         // Check if PayPal redirect is needed
         if (payData.checkout?.type === 'redirect' && payData.checkout?.approvalUrl) {
           setIsRedirecting(true)
-          // Redirect to PayPal for payment approval
           window.location.href = payData.checkout.approvalUrl
           return
         }
@@ -385,16 +606,13 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="buyer-email" required>
-                Email
-              </Label>
-              <Input
+              <Label htmlFor="buyer-email">Account Email</Label>
+              <p
                 id="buyer-email"
-                type="email"
-                value={buyer.email}
-                onChange={(eventValue) => updateBuyerField('email', eventValue.target.value)}
-                required
-              />
+                className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+              >
+                {session?.user?.email || 'No account email available'}
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="buyer-title">Title</Label>
@@ -446,6 +664,120 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
             </div>
           </CardContent>
         </Card>
+
+        {/* Per-ticket attendee information */}
+        {selectedItems.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Attendee Information</CardTitle>
+              <p className="text-sm text-gray-500">
+                Please provide details for each ticket holder. The first ticket is pre-filled with your buyer information.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {selectedItems.map((item) => {
+                const ticketType = ticketTypes.find((t) => t.id === item.ticketTypeId)
+                const slots = attendeesByType[item.ticketTypeId] ?? []
+
+                return (
+                  <div key={item.ticketTypeId} className="space-y-4">
+                    {Array.from({ length: item.quantity }, (_, i) => {
+                      const attendee = slots[i] ?? emptyAttendee()
+                      const label =
+                        item.quantity > 1
+                          ? `${ticketType?.name ?? 'Ticket'} #${i + 1}`
+                          : (ticketType?.name ?? 'Ticket')
+
+                      return (
+                        <div
+                          key={`${item.ticketTypeId}-${i}`}
+                          className="rounded-lg border border-gray-200 p-4"
+                        >
+                          <p className="mb-3 text-sm font-medium text-gray-700">{label}</p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label
+                                htmlFor={`attendee-${item.ticketTypeId}-${i}-first-name`}
+                                required
+                              >
+                                First Name
+                              </Label>
+                              <Input
+                                id={`attendee-${item.ticketTypeId}-${i}-first-name`}
+                                value={attendee.firstName}
+                                onChange={(e) =>
+                                  updateAttendeeField(item.ticketTypeId, i, 'firstName', e.target.value)
+                                }
+                                required
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label
+                                htmlFor={`attendee-${item.ticketTypeId}-${i}-last-name`}
+                                required
+                              >
+                                Last Name
+                              </Label>
+                              <Input
+                                id={`attendee-${item.ticketTypeId}-${i}-last-name`}
+                                value={attendee.lastName}
+                                onChange={(e) =>
+                                  updateAttendeeField(item.ticketTypeId, i, 'lastName', e.target.value)
+                                }
+                                required
+                              />
+                            </div>
+                            <div className="space-y-1 sm:col-span-2">
+                              <Label
+                                htmlFor={`attendee-${item.ticketTypeId}-${i}-email`}
+                                required
+                              >
+                                Email
+                              </Label>
+                              <Input
+                                id={`attendee-${item.ticketTypeId}-${i}-email`}
+                                type="email"
+                                value={attendee.email}
+                                onChange={(e) =>
+                                  updateAttendeeField(item.ticketTypeId, i, 'email', e.target.value)
+                                }
+                                required
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor={`attendee-${item.ticketTypeId}-${i}-title`}>
+                                Title
+                              </Label>
+                              <Input
+                                id={`attendee-${item.ticketTypeId}-${i}-title`}
+                                value={attendee.title}
+                                onChange={(e) =>
+                                  updateAttendeeField(item.ticketTypeId, i, 'title', e.target.value)
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor={`attendee-${item.ticketTypeId}-${i}-organization`}>
+                                Organization
+                              </Label>
+                              <Input
+                                id={`attendee-${item.ticketTypeId}-${i}-organization`}
+                                value={attendee.organization}
+                                onChange={(e) =>
+                                  updateAttendeeField(item.ticketTypeId, i, 'organization', e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="space-y-6 lg:col-span-1">
@@ -470,6 +802,27 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
           currency={selectedItems[0]?.currency ?? 'SEK'}
           discountCode={discount?.code}
         />
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Reservation Window</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-gray-600">
+              Pending checkout reservations are held for {reservationTtlMinutes} minutes.
+            </p>
+            {reservationSecondsRemaining !== null && reservationSecondsRemaining > 0 && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                Your current reservation expires in {formatRemainingTime(reservationSecondsRemaining)}.
+              </p>
+            )}
+            {reservationSecondsRemaining === 0 && (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                This reservation expired. Start checkout again to reserve tickets.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -507,6 +860,14 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
           <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3">
             <p className="text-sm text-yellow-800">
               Payment was cancelled. You can try again when ready.
+            </p>
+          </div>
+        )}
+
+        {wasExpired && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3">
+            <p className="text-sm text-red-700">
+              Your previous reservation expired. Select tickets again to continue checkout.
             </p>
           </div>
         )}

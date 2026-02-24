@@ -71,7 +71,13 @@ export function EventDashboard({ event, stats }: EventDashboardProps) {
             <a href={`/api/dashboard/events/${event.id}/attendees/export`} download>
               <Button variant="outline">
                 <Download className="mr-2 h-4 w-4" />
-                Export Attendees
+                Export CSV
+              </Button>
+            </a>
+            <a href={`/api/dashboard/events/${event.id}/attendees/export-excel`} download>
+              <Button variant="outline">
+                <Download className="mr-2 h-4 w-4" />
+                Export Excel
               </Button>
             </a>
             <Link href={`/events/${event.slug}`}>

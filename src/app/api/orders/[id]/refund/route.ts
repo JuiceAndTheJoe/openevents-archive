@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendEmail } from '@/lib/email'
+import { lockTicketTypes } from '@/lib/orders'
 import { processRefund, isPayPalConfigured } from '@/lib/payments'
 import { refundOrderSchema } from '@/lib/validations'
 
@@ -45,6 +47,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
             },
           },
         },
+        items: {
+          select: {
+            ticketTypeId: true,
+            quantity: true,
+          },
+        },
       },
     })
 
@@ -86,16 +94,66 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        status: refundStatus === 'PROCESSED' ? 'REFUNDED' : order.status,
-        refundStatus,
-        refundReason: parsed.data.reason,
-        refundNotes: parsed.data.notes,
-        refundedAt: refundStatus === 'PROCESSED' ? new Date() : null,
-      },
-    })
+    let updatedOrder
+
+    if (refundStatus === 'PROCESSED') {
+      const ticketTypeIds = Array.from(new Set(order.items.map((item) => item.ticketTypeId)))
+
+      updatedOrder = await prisma.$transaction(
+        async (tx) => {
+          await lockTicketTypes(tx, ticketTypeIds)
+
+          if (order.status === 'PAID') {
+            for (const item of order.items) {
+              await tx.ticketType.update({
+                where: { id: item.ticketTypeId },
+                data: {
+                  soldCount: {
+                    decrement: item.quantity,
+                  },
+                },
+              })
+            }
+          }
+
+          await tx.ticket.updateMany({
+            where: {
+              orderId: order.id,
+              status: 'ACTIVE',
+            },
+            data: {
+              status: 'CANCELLED',
+            },
+          })
+
+          return tx.order.update({
+            where: { id: order.id },
+            data: {
+              status: 'REFUNDED',
+              expiresAt: null,
+              refundStatus,
+              refundReason: parsed.data.reason,
+              refundNotes: parsed.data.notes,
+              refundedAt: new Date(),
+            },
+          })
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        }
+      )
+    } else {
+      updatedOrder = await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: order.status,
+          refundStatus,
+          refundReason: parsed.data.reason,
+          refundNotes: parsed.data.notes,
+          refundedAt: null,
+        },
+      })
+    }
 
     // Send appropriate email based on refund status
     if (refundStatus === 'PROCESSED') {

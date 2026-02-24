@@ -356,6 +356,7 @@ model TicketType {
 
   event         Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
   orderItems    OrderItem[]
+  tickets       Ticket[]
   discountCodes DiscountCodeTicketType[]
 
   @@index([eventId])
@@ -447,6 +448,7 @@ model Order {
   // Timestamps
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
+  expiresAt       DateTime?
   paidAt          DateTime?
   cancelledAt     DateTime?
   refundedAt      DateTime?
@@ -465,6 +467,7 @@ model Order {
   @@index([userId])
   @@index([eventId])
   @@index([orderNumber])
+  @@index([status, expiresAt])
   @@map("orders")
 }
 
@@ -495,6 +498,7 @@ model OrderItem {
   quantity     Int
   unitPrice    Decimal  @db.Decimal(10, 2)
   totalPrice   Decimal  @db.Decimal(10, 2)
+  attendeeData Json?    // Array of attendee info objects, one per ticket slot
   createdAt    DateTime @default(now())
 
   order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -510,9 +514,11 @@ model Ticket {
   ticketTypeId String
 
   // Attendee info (can be different from buyer)
-  attendeeFirstName String?
-  attendeeLastName  String?
-  attendeeEmail     String?
+  attendeeFirstName    String?
+  attendeeLastName     String?
+  attendeeEmail        String?
+  attendeeTitle        String?
+  attendeeOrganization String?
 
   status       TicketStatus @default(ACTIVE)
   checkedInAt  DateTime?
@@ -520,7 +526,8 @@ model Ticket {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@index([ticketCode])

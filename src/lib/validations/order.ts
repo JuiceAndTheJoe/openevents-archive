@@ -12,9 +12,18 @@ export const buyerInfoSchema = z.object({
   country: z.string().optional(),
 })
 
+export const checkoutAttendeeSchema = z.object({
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
+  email: z.string().email('Invalid email address'),
+  title: z.string().optional(),
+  organization: z.string().optional(),
+})
+
 export const orderItemSchema = z.object({
   ticketTypeId: z.string().min(1),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+  attendees: z.array(checkoutAttendeeSchema).optional(),
 })
 
 export const createOrderSchema = z.object({
@@ -43,6 +52,7 @@ export const attendeeInfoSchema = z.object({
 })
 
 export type BuyerInfoInput = z.infer<typeof buyerInfoSchema>
+export type CheckoutAttendeeInput = z.infer<typeof checkoutAttendeeSchema>
 export type OrderItemInput = z.infer<typeof orderItemSchema>
 export type CreateOrderInput = z.infer<typeof createOrderSchema>
 export type CancelOrderInput = z.infer<typeof cancelOrderSchema>

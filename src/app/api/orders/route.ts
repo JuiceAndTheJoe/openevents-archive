@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 import { lockTicketTypes, prepareOrderItems, generateTicketCreateInput } from '@/lib/orders'
+import { getOrderReservationExpiry, getOrderReservationTtlMinutes } from '@/lib/orders/reservation'
 import {
   calculateDiscountAmount,
   decimalToNumber,
@@ -20,6 +21,11 @@ type DiscountCodeWithLinks = Prisma.DiscountCodeGetPayload<{
 
 export async function POST(request: NextRequest) {
   try {
+    const reservationTtlMinutes = getOrderReservationTtlMinutes(
+      process.env.ORDER_RESERVATION_TTL_MINUTES ??
+        process.env.NEXT_PUBLIC_ORDER_RESERVATION_TTL_MINUTES
+    )
+
     const user = await requireAuth()
     const body = await request.json()
     const parsed = createOrderSchema.safeParse(body)
@@ -35,6 +41,14 @@ export async function POST(request: NextRequest) {
     }
 
     const input = parsed.data
+    const accountEmail = user.email?.trim() || input.buyer.email?.trim()
+
+    if (!accountEmail) {
+      return NextResponse.json(
+        { error: 'Authenticated account email is required to place an order' },
+        { status: 400 }
+      )
+    }
 
     const createdOrder = await prisma.$transaction(
       async (tx) => {
@@ -193,6 +207,9 @@ export async function POST(request: NextRequest) {
           paymentMethod = 'FREE'
         }
 
+        const now = new Date()
+        const expiresAt = status === 'PENDING' ? getOrderReservationExpiry(now, reservationTtlMinutes) : null
+
         const order = await tx.order.create({
           data: {
             orderNumber: generateOrderNumber(),
@@ -202,7 +219,7 @@ export async function POST(request: NextRequest) {
             buyerFirstName: input.buyer.firstName,
             buyerLastName: input.buyer.lastName,
             buyerTitle: input.buyer.title,
-            buyerEmail: input.buyer.email,
+            buyerEmail: accountEmail,
             buyerOrganization: input.buyer.organization,
             buyerAddress: input.buyer.address,
             buyerCity: input.buyer.city,
@@ -214,7 +231,8 @@ export async function POST(request: NextRequest) {
             currency: ticketTypes[0]?.currency ?? 'SEK',
             status,
             paymentMethod,
-            paidAt: status === 'PAID' ? new Date() : null,
+            expiresAt,
+            paidAt: status === 'PAID' ? now : null,
           },
           include: {
             items: true,
@@ -222,6 +240,13 @@ export async function POST(request: NextRequest) {
             tickets: true,
           },
         })
+
+        // Build a map of attendee data from the request, keyed by ticketTypeId
+        const attendeesByTicketType = new Map(
+          input.items
+            .filter((item) => item.attendees && item.attendees.length > 0)
+            .map((item) => [item.ticketTypeId, item.attendees!])
+        )
 
         if (preparedOrder.items.length > 0) {
           await tx.orderItem.createMany({
@@ -231,6 +256,7 @@ export async function POST(request: NextRequest) {
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               totalPrice: item.totalPrice,
+              attendeeData: attendeesByTicketType.get(item.ticketTypeId) ?? undefined,
             })),
           })
         }
@@ -247,7 +273,13 @@ export async function POST(request: NextRequest) {
             })
           }
 
-          const tickets = generateTicketCreateInput(order.id, preparedOrder.items)
+          const tickets = generateTicketCreateInput(
+            order.id,
+            preparedOrder.items.map((item) => ({
+              ...item,
+              attendees: attendeesByTicketType.get(item.ticketTypeId),
+            }))
+          )
           if (tickets.length > 0) {
             await tx.ticket.createMany({ data: tickets })
           }
@@ -334,6 +366,8 @@ export async function POST(request: NextRequest) {
         requiresPayment: createdOrder.status === 'PENDING',
         isInvoiceFlow: createdOrder.status === 'PENDING_INVOICE',
         isFreeOrder: createdOrder.status === 'PAID' && createdOrder.paymentMethod === 'FREE',
+        reservationTtlMinutes,
+        reservationExpiresAt: createdOrder.expiresAt?.toISOString() ?? null,
       },
       message:
         createdOrder.status === 'PAID'

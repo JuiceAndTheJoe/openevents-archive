@@ -11,6 +11,7 @@ import {
   isPayPalConfigured,
 } from '@/lib/payments'
 import { generateTicketCreateInput, lockTicketTypes } from '@/lib/orders'
+import { expirePendingOrderIfNeeded } from '@/lib/orders/expirePendingOrder'
 import { formatDateTime } from '@/lib/utils'
 
 interface RouteContext {
@@ -29,7 +30,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const user = await requireAuth()
 
     const body = await request.json().catch(() => ({}))
-    console.log('[Pay] Request body:', body)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Pay] Processing order:', orderId)
+    }
     const parsed = payOrderSchema.safeParse(body)
 
     if (!parsed.success) {
@@ -83,6 +86,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (order.status === 'PAID') {
       return NextResponse.json({ message: 'Order is already paid', order })
+    }
+
+    if (order.status === 'PENDING' && order.expiresAt && order.expiresAt <= new Date()) {
+      await expirePendingOrderIfNeeded(order.id)
+      return NextResponse.json(
+        { error: 'Order reservation has expired. Please start checkout again.' },
+        { status: 409 }
+      )
     }
 
     if (order.status !== 'PENDING' && order.status !== 'PENDING_INVOICE') {
@@ -205,6 +216,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           data: {
             status: 'PAID',
             paidAt: new Date(),
+            expiresAt: null,
             paymentId: paymentIntent.id,
             paymentMethod: PaymentMethod.PAYPAL,
           },

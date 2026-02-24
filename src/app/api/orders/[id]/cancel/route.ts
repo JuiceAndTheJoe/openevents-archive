@@ -83,6 +83,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
             data: {
               status: 'CANCELLED',
               cancelledAt: new Date(),
+              expiresAt: null,
             },
           })
         },
@@ -225,6 +226,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           data: {
             status: 'CANCELLED',
             cancelledAt: new Date(),
+            expiresAt: null,
             refundStatus: order.status === 'PAID' ? 'PENDING' : null,
             refundReason: parsed.data.reason,
           },

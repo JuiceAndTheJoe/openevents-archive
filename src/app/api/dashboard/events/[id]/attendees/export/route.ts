@@ -54,6 +54,8 @@ export async function GET(request: Request, context: RouteContext) {
         attendeeFirstName: true,
         attendeeLastName: true,
         attendeeEmail: true,
+        attendeeTitle: true,
+        attendeeOrganization: true,
         status: true,
         checkedInAt: true,
         order: {
@@ -91,9 +93,8 @@ export async function GET(request: Request, context: RouteContext) {
       const firstName = ticket.attendeeFirstName || ticket.order.buyerFirstName
       const lastName = ticket.attendeeLastName || ticket.order.buyerLastName
       const email = ticket.attendeeEmail || ticket.order.buyerEmail
-      // Title and organization come from buyer info (not stored on attendee)
-      const title = ticket.order.buyerTitle || ''
-      const organization = ticket.order.buyerOrganization || ''
+      const title = ticket.attendeeTitle || ticket.order.buyerTitle || ''
+      const organization = ticket.attendeeOrganization || ticket.order.buyerOrganization || ''
 
       lines.push([
         csvCell(ticket.ticketCode),

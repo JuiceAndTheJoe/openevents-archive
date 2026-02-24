@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
 import { sendEventCancellationEmail } from '@/lib/email'
+import { lockTicketTypes } from '@/lib/orders'
+import { isPayPalConfigured, processRefund } from '@/lib/payments'
 import { formatDateTime } from '@/lib/utils'
 
 const cancelBodySchema = z.object({
@@ -13,7 +16,11 @@ type RouteContext = {
   params: Promise<{ id: string }>
 }
 
-function queueCancellationEmails(
+function appendNote(existing: string | null, note: string) {
+  return existing ? `${existing}\n${note}` : note
+}
+
+async function sendCancellationEmails(
   orders: Array<{
     buyerEmail: string
     buyerFirstName: string
@@ -23,7 +30,7 @@ function queueCancellationEmails(
   eventTitle: string,
   eventDate: string
 ) {
-  void Promise.allSettled(
+  const results = await Promise.allSettled(
     orders.map((order) =>
       sendEventCancellationEmail(order.buyerEmail, {
         eventTitle,
@@ -32,12 +39,17 @@ function queueCancellationEmails(
         orderNumber: order.orderNumber,
       })
     )
-  ).then((results) => {
-    const failedCount = results.filter((result) => result.status === 'rejected').length
-    if (failedCount > 0) {
-      console.error(`Failed to send ${failedCount} cancellation emails`)
-    }
-  })
+  )
+
+  const failedCount = results.filter((result) => result.status === 'rejected').length
+  if (failedCount > 0) {
+    console.error(`Failed to send ${failedCount} cancellation emails`)
+  }
+
+  return {
+    sentCount: results.length - failedCount,
+    failedCount,
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -91,42 +103,316 @@ export async function POST(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const [cancelledEvent, orders] = await prisma.$transaction([
-      prisma.event.update({
-        where: { id },
-        data: {
-          status: 'CANCELLED',
-          cancelledAt: new Date(),
-          descriptionHtml: parsed.data.reason
-            ? `${event.descriptionHtml || ''}\n\n<p><strong>Cancellation reason:</strong> ${parsed.data.reason}</p>`
-            : event.descriptionHtml,
-        },
-      }),
-      prisma.order.findMany({
-        where: {
-          eventId: id,
-          status: {
-            in: ['PAID', 'PENDING_INVOICE', 'PENDING'],
-          },
-        },
-        select: {
-          buyerEmail: true,
-          buyerFirstName: true,
-          buyerLastName: true,
-          orderNumber: true,
-        },
-      }),
-    ])
+    const cancelledAt = new Date()
+    const refundReason = parsed.data.reason || 'Event cancelled by organizer'
 
-    queueCancellationEmails(
-      orders,
+    const { cancelledEvent, affectedOrders } = await prisma.$transaction(
+      async (tx) => {
+        const orders = await tx.order.findMany({
+          where: {
+            eventId: id,
+            status: {
+              in: ['PAID', 'PENDING_INVOICE', 'PENDING'],
+            },
+          },
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            paymentMethod: true,
+            paymentId: true,
+            totalAmount: true,
+            currency: true,
+            discountCodeId: true,
+            buyerEmail: true,
+            buyerFirstName: true,
+            buyerLastName: true,
+            refundNotes: true,
+            items: {
+              select: {
+                ticketTypeId: true,
+                quantity: true,
+              },
+            },
+          },
+        })
+
+        const ticketTypeIds = Array.from(
+          new Set(orders.flatMap((order) => order.items.map((item) => item.ticketTypeId)))
+        )
+
+        await lockTicketTypes(tx, ticketTypeIds)
+
+        const reservedReleases = new Map<string, number>()
+        const soldReleases = new Map<string, number>()
+        const paidOrderIds: string[] = []
+        const pendingOrderIds: string[] = []
+        const paypalPaidOrderIds: string[] = []
+
+        for (const order of orders) {
+          if (order.status === 'PAID') {
+            paidOrderIds.push(order.id)
+            if (order.paymentMethod === 'PAYPAL') {
+              paypalPaidOrderIds.push(order.id)
+            }
+          } else {
+            pendingOrderIds.push(order.id)
+          }
+
+          for (const item of order.items) {
+            const target = order.status === 'PAID' ? soldReleases : reservedReleases
+            target.set(item.ticketTypeId, (target.get(item.ticketTypeId) || 0) + item.quantity)
+          }
+        }
+
+        for (const [ticketTypeId, quantity] of reservedReleases.entries()) {
+          await tx.ticketType.update({
+            where: { id: ticketTypeId },
+            data: {
+              reservedCount: {
+                decrement: quantity,
+              },
+            },
+          })
+        }
+
+        for (const [ticketTypeId, quantity] of soldReleases.entries()) {
+          await tx.ticketType.update({
+            where: { id: ticketTypeId },
+            data: {
+              soldCount: {
+                decrement: quantity,
+              },
+            },
+          })
+        }
+
+        if (paidOrderIds.length > 0) {
+          await tx.ticket.updateMany({
+            where: {
+              orderId: {
+                in: paidOrderIds,
+              },
+              status: 'ACTIVE',
+            },
+            data: {
+              status: 'CANCELLED',
+            },
+          })
+        }
+
+        if (pendingOrderIds.length > 0) {
+          await tx.order.updateMany({
+            where: {
+              id: {
+                in: pendingOrderIds,
+              },
+            },
+            data: {
+              status: 'CANCELLED',
+              cancelledAt,
+              expiresAt: null,
+            },
+          })
+        }
+
+        if (paidOrderIds.length > 0) {
+          await tx.order.updateMany({
+            where: {
+              id: {
+                in: paidOrderIds,
+              },
+            },
+            data: {
+              status: 'CANCELLED',
+              cancelledAt,
+              expiresAt: null,
+            },
+          })
+        }
+
+        if (paypalPaidOrderIds.length > 0) {
+          await tx.order.updateMany({
+            where: {
+              id: {
+                in: paypalPaidOrderIds,
+              },
+            },
+            data: {
+              refundStatus: 'PENDING',
+              refundReason,
+            },
+          })
+        }
+
+        for (const order of orders) {
+          if (!order.discountCodeId) continue
+          await tx.discountCode.updateMany({
+            where: {
+              id: order.discountCodeId,
+              usedCount: {
+                gt: 0,
+              },
+            },
+            data: {
+              usedCount: {
+                decrement: 1,
+              },
+            },
+          })
+        }
+
+        const cancelledEvent = await tx.event.update({
+          where: { id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt,
+            descriptionHtml: parsed.data.reason
+              ? `${event.descriptionHtml || ''}\n\n<p><strong>Cancellation reason:</strong> ${parsed.data.reason}</p>`
+              : event.descriptionHtml,
+          },
+        })
+
+        return {
+          cancelledEvent,
+          affectedOrders: orders,
+        }
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
+    )
+
+    const payPalConfigured = isPayPalConfigured()
+    const refundablePayPalOrders = affectedOrders.filter(
+      (order) => order.status === 'PAID' && order.paymentMethod === 'PAYPAL'
+    )
+
+    const refundResults = await Promise.all(
+      refundablePayPalOrders.map(async (order) => {
+        if (!order.paymentId) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              refundStatus: 'PENDING',
+              refundReason,
+              refundNotes: appendNote(
+                order.refundNotes,
+                `Event cancellation on ${cancelledAt.toISOString()}: missing PayPal capture ID, manual refund required.`
+              ),
+            },
+          })
+
+          return { status: 'failed' as const }
+        }
+
+        if (!payPalConfigured) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              refundStatus: 'PENDING',
+              refundReason,
+              refundNotes: appendNote(
+                order.refundNotes,
+                `Event cancellation on ${cancelledAt.toISOString()}: PayPal is not configured, manual refund required.`
+              ),
+            },
+          })
+
+          return { status: 'pending' as const }
+        }
+
+        try {
+          const refund = await processRefund({
+            captureId: order.paymentId,
+            amount: Number(order.totalAmount),
+            currency: order.currency,
+            reason: refundReason,
+          })
+
+          if (refund.status === 'completed') {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: {
+                status: 'REFUNDED',
+                refundStatus: 'PROCESSED',
+                refundReason,
+                refundedAt: new Date(),
+                refundNotes: appendNote(
+                  order.refundNotes,
+                  `Event cancellation refund processed via PayPal. Refund ID: ${refund.refundId}.`
+                ),
+              },
+            })
+
+            return { status: 'completed' as const }
+          }
+
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              refundStatus: 'PENDING',
+              refundReason,
+              refundNotes: appendNote(
+                order.refundNotes,
+                `Event cancellation refund initiated via PayPal. Refund ID: ${refund.refundId}.`
+              ),
+            },
+          })
+
+          return { status: 'pending' as const }
+        } catch (refundError) {
+          const reason =
+            refundError instanceof Error ? refundError.message : 'Unknown PayPal refund error'
+          console.error(`PayPal refund initiation failed for order ${order.orderNumber}:`, refundError)
+
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              refundStatus: 'PENDING',
+              refundReason,
+              refundNotes: appendNote(
+                order.refundNotes,
+                `Event cancellation refund attempt failed (${reason}); manual refund required.`
+              ),
+            },
+          })
+
+          return { status: 'failed' as const }
+        }
+      })
+    )
+
+    const emailResults = await sendCancellationEmails(
+      affectedOrders,
       cancelledEvent.title,
       formatDateTime(cancelledEvent.startDate)
     )
 
+    const paidCancelledCount = affectedOrders.filter((order) => order.status === 'PAID').length
+    const pendingCancelledCount = affectedOrders.length - paidCancelledCount
+    const refundCompletedCount = refundResults.filter((result) => result.status === 'completed').length
+    const refundPendingCount = refundResults.filter((result) => result.status === 'pending').length
+    const refundFailedCount = refundResults.filter((result) => result.status === 'failed').length
+
     return NextResponse.json({
       data: cancelledEvent,
-      message: `Event cancelled. Queued ${orders.length} cancellation email notifications.`,
+      summary: {
+        ordersCancelled: affectedOrders.length,
+        pendingOrInvoiceOrdersCancelled: pendingCancelledCount,
+        paidOrdersCancelled: paidCancelledCount,
+        paypalRefunds: {
+          attempted: refundablePayPalOrders.length,
+          completed: refundCompletedCount,
+          pending: refundPendingCount,
+          failed: refundFailedCount,
+        },
+        cancellationEmails: {
+          sent: emailResults.sentCount,
+          failed: emailResults.failedCount,
+        },
+      },
+      message: `Event cancelled. ${affectedOrders.length} orders updated, ${emailResults.sentCount} cancellation emails sent.`,
     })
   } catch (error) {
     if (error instanceof Error) {

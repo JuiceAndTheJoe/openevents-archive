@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma, PaymentMethod } from '@prisma/client'
+import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 import { capturePayment, getPaymentStatus } from '@/lib/payments'
 import { generateTicketCreateInput, lockTicketTypes } from '@/lib/orders'
+import { expirePendingOrderIfNeeded } from '@/lib/orders/expirePendingOrder'
 import { formatDateTime } from '@/lib/utils'
 
 interface RouteContext {
@@ -21,6 +23,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { id: orderId } = await context.params
     const { searchParams } = new URL(request.url)
     const paypalToken = searchParams.get('token')
+    const user = await requireAuth()
+
+    if (!paypalToken) {
+      return NextResponse.redirect(`${APP_URL}/checkout-error?error=invalid_token`)
+    }
 
     // Find the order
     const order = await prisma.order.findUnique({
@@ -56,8 +63,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.redirect(`${APP_URL}/checkout-error?error=order_not_found`)
     }
 
+    if (order.userId !== user.id) {
+      console.error('[Capture] Forbidden order capture attempt:', {
+        orderId: order.id,
+        orderUserId: order.userId,
+        requesterUserId: user.id,
+      })
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     // Verify the PayPal token matches
-    if (paypalToken && order.paymentId !== paypalToken) {
+    if (order.paymentId !== paypalToken) {
       console.error('[Capture] Token mismatch:', { expected: order.paymentId, received: paypalToken })
       return NextResponse.redirect(`${APP_URL}/checkout-error?error=invalid_token`)
     }
@@ -65,6 +81,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // Check if already paid
     if (order.status === 'PAID') {
       return NextResponse.redirect(`${APP_URL}/orders/${order.orderNumber}/confirmation`)
+    }
+
+    if (order.status === 'PENDING' && order.expiresAt && order.expiresAt <= new Date()) {
+      await expirePendingOrderIfNeeded(order.id)
+      return NextResponse.redirect(`${APP_URL}/checkout-error?error=reservation_expired`)
     }
 
     // Check if order can be paid
@@ -160,6 +181,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           data: {
             status: 'PAID',
             paidAt: new Date(),
+            expiresAt: null,
             paymentId: captureResult.captureId,
             paymentMethod: PaymentMethod.PAYPAL,
           },
@@ -175,6 +197,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
             unitPrice: Number(item.unitPrice),
             totalPrice: Number(item.totalPrice),
             currency: latestOrder.currency,
+            attendees: Array.isArray(item.attendeeData) ? (item.attendeeData as unknown as import('@/lib/orders').AttendeeData[]) : undefined,
           }))
         )
 
@@ -239,6 +262,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // Redirect to confirmation page
     return NextResponse.redirect(`${APP_URL}/orders/${paidOrder.orderNumber}/confirmation`)
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     console.error('[Capture] Failed to capture payment:', error)
     return NextResponse.redirect(`${APP_URL}/checkout-error?error=capture_exception`)
   }

@@ -2,9 +2,18 @@ import { Prisma } from '@prisma/client'
 import { generateTicketCode } from '@/lib/utils'
 import { decimalToNumber, toMoneyCents, fromMoneyCents } from '@/lib/tickets'
 
+export interface AttendeeData {
+  firstName: string
+  lastName: string
+  email: string
+  title?: string
+  organization?: string
+}
+
 export interface RequestedOrderItem {
   ticketTypeId: string
   quantity: number
+  attendees?: AttendeeData[]
 }
 
 export interface PreparedOrderItem {
@@ -87,19 +96,34 @@ export function prepareOrderItems(
   }
 }
 
-export function generateTicketCreateInput(orderId: string, items: PreparedOrderItem[]) {
+export interface PreparedOrderItemWithAttendees extends PreparedOrderItem {
+  attendees?: AttendeeData[]
+}
+
+export function generateTicketCreateInput(orderId: string, items: PreparedOrderItemWithAttendees[]) {
   const tickets: Array<{
     ticketCode: string
     orderId: string
     ticketTypeId: string
+    attendeeFirstName?: string
+    attendeeLastName?: string
+    attendeeEmail?: string
+    attendeeTitle?: string
+    attendeeOrganization?: string
   }> = []
 
   for (const item of items) {
     for (let i = 0; i < item.quantity; i += 1) {
+      const attendee = item.attendees?.[i]
       tickets.push({
         ticketCode: generateTicketCode(),
         orderId,
         ticketTypeId: item.ticketTypeId,
+        attendeeFirstName: attendee?.firstName,
+        attendeeLastName: attendee?.lastName,
+        attendeeEmail: attendee?.email,
+        attendeeTitle: attendee?.title,
+        attendeeOrganization: attendee?.organization,
       })
     }
   }
