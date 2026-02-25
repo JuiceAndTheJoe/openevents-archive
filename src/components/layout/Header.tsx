@@ -210,15 +210,6 @@ export function Header() {
             )}
             {canAccessMyEvents && (
               <Link
-                href="/dashboard/scan"
-                className="block rounded-lg bg-blue-600 px-3 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Scan Tickets
-              </Link>
-            )}
-            {canAccessMyEvents && (
-              <Link
                 href="/my-events"
                 className="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-md"
                 onClick={() => setMobileMenuOpen(false)}
