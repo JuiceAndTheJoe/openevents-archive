@@ -237,7 +237,11 @@
     },
     "home": {
       "welcome": "Välkommen, {name}",
-      "subtitle": "Översikt av dina evenemang, beställningar och intäkter."
+      "subtitle": "Översikt av dina evenemang, beställningar och intäkter.",
+      "analyticsTitle": "Analys",
+      "topEvents": "Topplistade evenemang efter intäkter",
+      "salesTrend": "Försäljningstrend – senaste 30 dagarna",
+      "noData": "Ingen data ännu."
     },
     "scan": {
       "title": "Skanna biljetter",
@@ -331,7 +335,13 @@
       "exportExcel": "Exportera Excel",
       "openPublicPage": "Öppna publik sida",
       "revenue": "Intäkter",
+      "totalTicketsSold": "Sålda biljetter",
       "orders": "Beställningar",
+      "refundRate": "Återbetalningsgrad",
+      "refundedAmount": "{amount} återbetalt",
+      "salesTrend": "Försäljningstrend – senaste 30 dagarna",
+      "noSalesData": "Ingen försäljningsdata ännu.",
+      "ticketsSoldByType": "Sålda biljetter per typ",
       "ticketTypes": "Biljetttyper",
       "orderSummaryTitle": "Beställningsöversikt",
       "revenueByTicketType": "Intäkter per biljetttyp",

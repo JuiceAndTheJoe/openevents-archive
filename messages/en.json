@@ -237,7 +237,11 @@
     },
     "home": {
       "welcome": "Welcome, {name}",
-      "subtitle": "Overview of your events, orders, and revenue."
+      "subtitle": "Overview of your events, orders, and revenue.",
+      "analyticsTitle": "Analytics",
+      "topEvents": "Top Events by Revenue",
+      "salesTrend": "Sales Trend – Last 30 Days",
+      "noData": "No data yet."
     },
     "scan": {
       "title": "Scan Tickets",
@@ -331,7 +335,13 @@
       "exportExcel": "Export Excel",
       "openPublicPage": "Open Public Page",
       "revenue": "Revenue",
+      "totalTicketsSold": "Tickets Sold",
       "orders": "Orders",
+      "refundRate": "Refund Rate",
+      "refundedAmount": "{amount} refunded",
+      "salesTrend": "Sales Trend – Last 30 Days",
+      "noSalesData": "No sales data yet.",
+      "ticketsSoldByType": "Tickets Sold by Type",
       "ticketTypes": "Ticket Types",
       "orderSummaryTitle": "Order Summary",
       "revenueByTicketType": "Revenue by Ticket Type",
