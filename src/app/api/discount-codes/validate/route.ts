@@ -67,8 +67,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       valid: true,
-      discountType: discountCode.discountType,
-      discountValue: decimalToNumber(discountCode.discountValue),
+      discount: {
+        id: discountCode.id,
+        code: discountCode.code,
+        discountType: discountCode.discountType,
+        discountValue: decimalToNumber(discountCode.discountValue),
+        applicableTicketTypeIds: applicableTicketTypeIds,
+      },
     })
   } catch (error) {
     console.error('Failed to validate discount code:', error)
