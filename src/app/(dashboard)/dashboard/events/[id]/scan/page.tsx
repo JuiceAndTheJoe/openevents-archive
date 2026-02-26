@@ -35,11 +35,12 @@ export default async function ScanTicketsPage({ params }: PageProps) {
         },
       },
     }),
+    // Only count tickets from PAID orders - PENDING_INVOICE orders don't have tickets yet
     prisma.ticket.count({
       where: {
         order: {
           eventId: event.id,
-          status: { in: ['PAID', 'PENDING_INVOICE'] },
+          status: 'PAID',
         },
       },
     }),

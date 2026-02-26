@@ -27,9 +27,11 @@ type OrderDetailViewProps = {
   }
   refundAction: (formData: FormData) => Promise<void>
   emailAction: (formData: FormData) => Promise<void>
+  markPaidAction?: (formData: FormData) => Promise<void>
 }
 
-export function OrderDetailView({ order, refundAction, emailAction }: OrderDetailViewProps) {
+export function OrderDetailView({ order, refundAction, emailAction, markPaidAction }: OrderDetailViewProps) {
+  const isPendingInvoice = order.status === 'PENDING_INVOICE'
   return (
     <div className="space-y-6">
       <section className="rounded-xl border border-gray-200 bg-white p-6">
@@ -66,6 +68,14 @@ export function OrderDetailView({ order, refundAction, emailAction }: OrderDetai
       <section className="rounded-xl border border-gray-200 bg-white p-6">
         <h2 className="text-lg font-semibold text-gray-900">Actions</h2>
         <div className="mt-4 flex flex-wrap gap-3">
+          {isPendingInvoice && markPaidAction && (
+            <form action={markPaidAction}>
+              <input type="hidden" name="orderId" value={order.id} />
+              <Button type="submit" className="bg-green-600 hover:bg-green-700">
+                Mark as Paid
+              </Button>
+            </form>
+          )}
           <form action={refundAction}>
             <input type="hidden" name="orderId" value={order.id} />
             <Button variant="outline" type="submit">Mark Refund Pending</Button>
