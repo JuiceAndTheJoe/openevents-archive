@@ -1,10 +1,12 @@
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { notFound } from 'next/navigation'
-import { Prisma } from '@prisma/client'
+import { Prisma, PaymentMethod } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 import { requireOrganizerProfile, canAccessEvent } from '@/lib/dashboard/organizer'
 import { OrderDetailView } from '@/components/dashboard/OrderDetailView'
+import { generateTicketCreateInput, lockTicketTypes } from '@/lib/orders'
+import { formatDateTime } from '@/lib/utils'
 
 type PageProps = {
   params: Promise<{ id: string; orderId: string }>
@@ -138,6 +140,191 @@ export default async function EventOrderDetailPage({ params }: PageProps) {
     revalidatePath(`/dashboard/events/${id}/orders/${submittedOrderId}`)
   }
 
+  async function markPaidAction(formData: FormData) {
+    'use server'
+
+    const { event: eventCheck, isSuperAdmin, organizerProfile } = await canAccessEvent(id)
+    if (!eventCheck) {
+      throw new Error('Event not found')
+    }
+
+    const submittedOrderId = String(formData.get('orderId') || '')
+
+    const orderEventWhere: Prisma.EventWhereInput = isSuperAdmin
+      ? { id, deletedAt: null }
+      : { id, organizerId: organizerProfile!.id, deletedAt: null }
+
+    const targetOrder = await prisma.order.findFirst({
+      where: {
+        id: submittedOrderId,
+        eventId: id,
+        event: orderEventWhere,
+      },
+      include: {
+        items: {
+          include: {
+            ticketType: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        event: {
+          select: {
+            title: true,
+            startDate: true,
+            locationType: true,
+            venue: true,
+            city: true,
+            country: true,
+            onlineUrl: true,
+          },
+        },
+      },
+    })
+
+    if (!targetOrder) {
+      throw new Error('Order not found')
+    }
+
+    if (targetOrder.status !== 'PENDING_INVOICE') {
+      throw new Error(`Only pending invoice orders can be marked as paid. Current status: ${targetOrder.status}`)
+    }
+
+    const ticketTypeIds = Array.from(new Set(targetOrder.items.map((item) => item.ticketTypeId)))
+
+    const paidOrder = await prisma.$transaction(
+      async (tx) => {
+        await lockTicketTypes(tx, ticketTypeIds)
+
+        const latestOrder = await tx.order.findUniqueOrThrow({
+          where: { id: targetOrder.id },
+          include: {
+            items: {
+              include: {
+                ticketType: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+            event: {
+              select: {
+                title: true,
+                startDate: true,
+                locationType: true,
+                venue: true,
+                city: true,
+                country: true,
+                onlineUrl: true,
+              },
+            },
+          },
+        })
+
+        if (latestOrder.status === 'PAID') {
+          return latestOrder
+        }
+
+        if (latestOrder.status !== 'PENDING_INVOICE') {
+          throw new Error(`Order cannot be marked as paid in status ${latestOrder.status}`)
+        }
+
+        // Update ticket counts
+        for (const item of latestOrder.items) {
+          await tx.ticketType.update({
+            where: { id: item.ticketTypeId },
+            data: {
+              reservedCount: { decrement: item.quantity },
+              soldCount: { increment: item.quantity },
+            },
+          })
+        }
+
+        // Mark order as paid
+        await tx.order.update({
+          where: { id: latestOrder.id },
+          data: {
+            status: 'PAID',
+            paidAt: new Date(),
+            paymentMethod: PaymentMethod.INVOICE,
+          },
+        })
+
+        // Generate tickets
+        const ticketCreateData = generateTicketCreateInput(
+          latestOrder.id,
+          latestOrder.items.map((item) => ({
+            ticketTypeId: item.ticketTypeId,
+            ticketTypeName: item.ticketType.name,
+            quantity: item.quantity,
+            unitPrice: Number(item.unitPrice),
+            totalPrice: Number(item.totalPrice),
+            currency: latestOrder.currency,
+            attendees: Array.isArray(item.attendeeData)
+              ? (item.attendeeData as unknown as import('@/lib/orders').AttendeeData[])
+              : undefined,
+          }))
+        )
+
+        if (ticketCreateData.length > 0) {
+          await tx.ticket.createMany({ data: ticketCreateData })
+        }
+
+        return tx.order.findUniqueOrThrow({
+          where: { id: latestOrder.id },
+          include: {
+            items: {
+              include: {
+                ticketType: { select: { name: true } },
+              },
+            },
+            tickets: true,
+            event: {
+              select: {
+                title: true,
+                startDate: true,
+                locationType: true,
+                venue: true,
+                city: true,
+                country: true,
+                onlineUrl: true,
+              },
+            },
+          },
+        })
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+
+    // Send confirmation email
+    await sendOrderConfirmationEmail(paidOrder.buyerEmail, {
+      orderNumber: paidOrder.orderNumber,
+      eventTitle: paidOrder.event.title,
+      eventDate: formatDateTime(paidOrder.event.startDate),
+      eventLocation:
+        paidOrder.event.locationType === 'ONLINE'
+          ? paidOrder.event.onlineUrl || 'Online event'
+          : [paidOrder.event.venue, paidOrder.event.city, paidOrder.event.country].filter(Boolean).join(', '),
+      tickets: paidOrder.items.map((item) => ({
+        name: item.ticketType.name,
+        quantity: item.quantity,
+        price: `${item.totalPrice.toString()} ${paidOrder.currency}`,
+      })),
+      totalAmount: `${paidOrder.totalAmount.toString()} ${paidOrder.currency}`,
+      buyerName: `${paidOrder.buyerFirstName} ${paidOrder.buyerLastName}`,
+    })
+
+    revalidateTag('event-analytics', 'max')
+    revalidateTag('dashboard-analytics', 'max')
+    revalidatePath(`/dashboard/events/${id}/orders/${submittedOrderId}`)
+    revalidatePath(`/dashboard/events/${id}/orders`)
+  }
+
   return (
     <OrderDetailView
       order={{
@@ -153,6 +340,7 @@ export default async function EventOrderDetailPage({ params }: PageProps) {
       }}
       refundAction={refundAction}
       emailAction={emailAction}
+      markPaidAction={markPaidAction}
     />
   )
 }

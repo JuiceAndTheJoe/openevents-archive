@@ -556,3 +556,95 @@ export async function sendAccountDeletionCancelledEmail(email: string): Promise<
     text: `Your ${APP_NAME} account deletion request has been canceled.`,
   })
 }
+
+export async function sendInvoiceOrderNotificationEmail(
+  organizerEmail: string,
+  details: {
+    orderNumber: string
+    eventTitle: string
+    eventId: string
+    buyerName: string
+    buyerEmail: string
+    totalAmount: string
+    currency: string
+    tickets: Array<{ name: string; quantity: number; price: string }>
+  }
+): Promise<void> {
+  const ticketRows = details.tickets
+    .map(
+      (t) => `
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">${t.name}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${t.quantity}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${t.price}</td>
+        </tr>
+      `
+    )
+    .join('')
+
+  const dashboardUrl = `${APP_URL}/dashboard/events/${details.eventId}/orders`
+
+  await sendEmail({
+    to: organizerEmail,
+    subject: `New Invoice Order #${details.orderNumber} - ${details.eventTitle}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>New Invoice Order</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h1 style="color: #d97706;">New Invoice Order Received</h1>
+            <p>A new invoice order has been placed for your event and requires payment confirmation.</p>
+
+            <div style="background-color: #fffbeb; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #d97706;">
+              <h2 style="margin-top: 0; color: #92400e;">${details.eventTitle}</h2>
+              <p><strong>Order Number:</strong> #${details.orderNumber}</p>
+              <p><strong>Buyer:</strong> ${details.buyerName}</p>
+              <p><strong>Email:</strong> ${details.buyerEmail}</p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <thead>
+                <tr style="background-color: #f1f5f9;">
+                  <th style="padding: 8px; text-align: left;">Ticket</th>
+                  <th style="padding: 8px; text-align: center;">Qty</th>
+                  <th style="padding: 8px; text-align: right;">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${ticketRows}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2" style="padding: 8px; text-align: right;"><strong>Total:</strong></td>
+                  <td style="padding: 8px; text-align: right;"><strong>${details.totalAmount} ${details.currency}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+
+            <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p style="margin: 0; color: #92400e;">
+                <strong>Action Required:</strong> Once you receive payment, mark this order as paid in your dashboard to issue the tickets to the buyer.
+              </p>
+            </div>
+
+            <p style="text-align: center; margin: 30px 0;">
+              <a href="${dashboardUrl}" style="background-color: #d97706; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                View Orders Dashboard
+              </a>
+            </p>
+
+            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+            <p style="color: #666; font-size: 12px;">
+              This is an automated notification from ${APP_NAME}.
+            </p>
+          </div>
+        </body>
+      </html>
+    `,
+    text: `New Invoice Order #${details.orderNumber} for ${details.eventTitle}. Buyer: ${details.buyerName} (${details.buyerEmail}). Total: ${details.totalAmount} ${details.currency}. View orders: ${dashboardUrl}`,
+  })
+}
