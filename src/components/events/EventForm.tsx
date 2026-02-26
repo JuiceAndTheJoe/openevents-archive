@@ -3118,7 +3118,7 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
             isLoading={isSubmitting}
             className="flex-1 h-[50px] rounded-[10px] bg-[#5c8bd9] text-white text-lg font-semibold shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] hover:bg-[#4a7ac8]"
           >
-            Create Event
+            Publish Event
           </Button>
           <Button
             onClick={() => submit('save')}

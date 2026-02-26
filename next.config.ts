@@ -38,7 +38,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https: http:",
       "font-src 'self' data:",
-      "frame-src https://www.paypal.com https://www.sandbox.paypal.com",
+      "frame-src https://www.paypal.com https://www.sandbox.paypal.com https://www.google.com https://maps.googleapis.com",
       "connect-src 'self' https://www.paypal.com https://www.sandbox.paypal.com https://*.osaas.io",
       "object-src 'none'",
       "base-uri 'self'",
