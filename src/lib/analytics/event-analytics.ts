@@ -1,4 +1,3 @@
-import { unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { OrderStatus } from '@prisma/client'
 
@@ -61,9 +60,12 @@ async function fetchEventAnalytics(eventId: string): Promise<EventAnalytics> {
         where: {
           eventId,
           status: { in: revenueStatuses },
-          createdAt: { gte: thirtyDaysAgo },
+          OR: [
+            { paidAt: { gte: thirtyDaysAgo } },
+            { paidAt: null, createdAt: { gte: thirtyDaysAgo } },
+          ],
         },
-        select: { totalAmount: true, createdAt: true },
+        select: { totalAmount: true, createdAt: true, paidAt: true },
       }),
     ])
 
@@ -98,7 +100,8 @@ async function fetchEventAnalytics(eventId: string): Promise<EventAnalytics> {
     dailyMap.set(d.toISOString().slice(0, 10), 0)
   }
   for (const o of trendOrders) {
-    const day = o.createdAt.toISOString().slice(0, 10)
+    const saleDate = o.paidAt ?? o.createdAt
+    const day = saleDate.toISOString().slice(0, 10)
     if (dailyMap.has(day)) {
       dailyMap.set(day, (dailyMap.get(day) ?? 0) + Number(o.totalAmount.toString()))
     }
@@ -125,9 +128,7 @@ async function fetchEventAnalytics(eventId: string): Promise<EventAnalytics> {
   }
 }
 
-// Cached for 5 minutes. Each unique eventId gets its own cache entry.
-export const getEventAnalytics = unstable_cache(
-  fetchEventAnalytics,
-  ['event-analytics'],
-  { revalidate: 300, tags: ['event-analytics'] },
-)
+// Keep sales trend live so organizers see newly paid orders immediately.
+export async function getEventAnalytics(eventId: string): Promise<EventAnalytics> {
+  return fetchEventAnalytics(eventId)
+}

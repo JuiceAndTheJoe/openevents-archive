@@ -1,4 +1,3 @@
-import { unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { OrderStatus, Prisma } from '@prisma/client'
 
@@ -34,9 +33,12 @@ async function fetchDashboardAnalytics(organizerId: string | null): Promise<Dash
       where: {
         event: eventWhere,
         status: { in: revenueStatuses },
-        createdAt: { gte: thirtyDaysAgo },
+        OR: [
+          { paidAt: { gte: thirtyDaysAgo } },
+          { paidAt: null, createdAt: { gte: thirtyDaysAgo } },
+        ],
       },
-      select: { totalAmount: true, createdAt: true },
+      select: { totalAmount: true, createdAt: true, paidAt: true },
     }),
   ])
 
@@ -63,7 +65,8 @@ async function fetchDashboardAnalytics(organizerId: string | null): Promise<Dash
     dailyMap.set(d.toISOString().slice(0, 10), 0)
   }
   for (const o of trendOrders) {
-    const day = o.createdAt.toISOString().slice(0, 10)
+    const saleDate = o.paidAt ?? o.createdAt
+    const day = saleDate.toISOString().slice(0, 10)
     if (dailyMap.has(day)) {
       dailyMap.set(day, (dailyMap.get(day) ?? 0) + Number(o.totalAmount.toString()))
     }
@@ -76,9 +79,7 @@ async function fetchDashboardAnalytics(organizerId: string | null): Promise<Dash
   return { topEvents, dailySales }
 }
 
-// Cached for 5 minutes. Each unique organizerId gets its own cache entry.
-export const getDashboardAnalytics = unstable_cache(
-  fetchDashboardAnalytics,
-  ['dashboard-analytics'],
-  { revalidate: 300, tags: ['dashboard-analytics'] },
-)
+// Keep sales trend live so organizers see newly paid orders immediately.
+export async function getDashboardAnalytics(organizerId: string | null): Promise<DashboardAnalytics> {
+  return fetchDashboardAnalytics(organizerId)
+}
