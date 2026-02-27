@@ -32,7 +32,7 @@ type EventDashboardProps = {
       sold: number
       remaining: number | null
     }>
-    dailySales: Array<{ date: string; revenue: number }>
+    dailySales: Array<{ date: string; revenue: number; ticketsSold: number }>
   }
 }
 
@@ -59,13 +59,7 @@ export function EventDashboard({ event, stats }: EventDashboardProps) {
             <Link href={`/dashboard/events/${event.id}/edit`}>
               <Button variant="outline">Edit Event</Button>
             </Link>
-            <Link href={`/dashboard/events/${event.id}/tickets`}>
-              <Button variant="outline">Manage Tickets</Button>
-            </Link>
-            <Link href={`/dashboard/events/${event.id}/discounts`}>
-              <Button variant="outline">Manage Discounts</Button>
-            </Link>
-            <Link href={`/dashboard/events/${event.id}/orders`}>
+<Link href={`/dashboard/events/${event.id}/orders`}>
               <Button variant="outline">View Orders</Button>
             </Link>
             <Link href={`/dashboard/events/${event.id}/scan`}>

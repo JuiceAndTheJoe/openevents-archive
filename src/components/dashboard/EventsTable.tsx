@@ -112,12 +112,16 @@ export function EventsTable({ events }: EventsTableProps) {
                     <Link href={`/dashboard/events/${event.id}/edit`}>
                       <Button variant="outline" size="sm">Edit</Button>
                     </Link>
-                    <Link href={`/dashboard/events/${event.id}`}>
-                      <Button variant="outline" size="sm">View</Button>
-                    </Link>
-                    <Link href={`/dashboard/events/${event.id}/scan`}>
-                      <Button size="sm">Scan</Button>
-                    </Link>
+                    {event.status !== 'DRAFT' ? (
+                      <Link href={`/dashboard/events/${event.id}`}>
+                        <Button variant="outline" size="sm">View</Button>
+                      </Link>
+                    ) : null}
+                    {event.status !== 'DRAFT' && event.status !== 'CANCELLED' ? (
+                      <Link href={`/dashboard/events/${event.id}/scan`}>
+                        <Button size="sm">Scan</Button>
+                      </Link>
+                    ) : null}
                     {event.status === 'DRAFT' ? (
                       <Button size="sm" isLoading={busyId === event.id} onClick={() => runAction(event.id, 'publish')}>
                         Publish

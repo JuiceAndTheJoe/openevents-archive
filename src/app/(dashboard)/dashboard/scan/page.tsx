@@ -7,7 +7,9 @@ import { formatDateTime } from '@/lib/utils'
 export default async function DashboardScanPage() {
   const { organizerProfile, isSuperAdmin } = await requireOrganizerProfile()
 
-  const where = buildEventWhereClause(organizerProfile, isSuperAdmin)
+  const where = buildEventWhereClause(organizerProfile, isSuperAdmin, {
+    status: { notIn: ['DRAFT', 'CANCELLED'] },
+  })
 
   const events = await prisma.event.findMany({
     where,

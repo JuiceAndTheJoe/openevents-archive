@@ -30,8 +30,8 @@ export function OrganizerSidebarNav() {
 
   const navItems: NavItem[] = [
     { id: 'scan', href: '/dashboard/scan', label: 'Scan Tickets' },
-    { id: 'overview', href: '/dashboard', label: 'Overview' },
-    { id: 'events', href: '/dashboard/events', label: 'Events' },
+    { id: 'overview', href: '/dashboard', label: 'Dashboard' },
+    { id: 'events', href: '/dashboard/events', label: 'Manage Events' },
   ]
 
   const profileSectionActive = pathname === '/dashboard/profile' || pathname.startsWith('/dashboard/settings')

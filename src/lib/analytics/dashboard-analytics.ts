@@ -5,8 +5,15 @@ import { OrderStatus, Prisma } from '@prisma/client'
 const revenueStatuses: OrderStatus[] = ['PAID']
 
 export type DashboardAnalytics = {
-  topEvents: Array<{ eventId: string; title: string; revenue: number }>
-  dailySales: Array<{ date: string; revenue: number }>
+  topEvents: Array<{
+    eventId: string
+    title: string
+    revenue: number
+    ticketsSold: number
+    startDate: Date
+    categories: string[]
+  }>
+  dailySales: Array<{ date: string; revenue: number; ticketsSold: number }>
 }
 
 async function fetchDashboardAnalytics(organizerId: string | null): Promise<DashboardAnalytics> {
@@ -36,41 +43,77 @@ async function fetchDashboardAnalytics(organizerId: string | null): Promise<Dash
         status: { in: revenueStatuses },
         createdAt: { gte: thirtyDaysAgo },
       },
-      select: { totalAmount: true, createdAt: true },
+      select: {
+        totalAmount: true,
+        createdAt: true,
+        items: { select: { quantity: true } },
+      },
     }),
   ])
 
   const topEventIds = topRevenue.map((e) => e.eventId)
-  const events = topEventIds.length
-    ? await prisma.event.findMany({
-        where: { id: { in: topEventIds } },
-        select: { id: true, title: true },
-      })
-    : []
 
-  const titleMap = new Map(events.map((e) => [e.id, e.title]))
-  const topEvents = topRevenue.map((item) => ({
-    eventId: item.eventId,
-    title: titleMap.get(item.eventId) ?? 'Unknown',
-    revenue: Number(item._sum?.totalAmount?.toString() ?? '0'),
-  }))
+  const [events, ticketRows] = topEventIds.length
+    ? await Promise.all([
+        prisma.event.findMany({
+          where: { id: { in: topEventIds } },
+          select: {
+            id: true,
+            title: true,
+            startDate: true,
+            categories: { select: { category: { select: { name: true } } } },
+          },
+        }),
+        prisma.orderItem.findMany({
+          where: {
+            order: { eventId: { in: topEventIds }, status: { in: revenueStatuses } },
+          },
+          select: { quantity: true, ticketType: { select: { eventId: true } } },
+        }),
+      ])
+    : [[], []]
 
-  // Build 30-day trend map (all days initialised to 0)
-  const dailyMap = new Map<string, number>()
+  const eventMap = new Map(events.map((e) => [e.id, e]))
+  const ticketsByEvent = new Map<string, number>()
+  for (const row of ticketRows) {
+    const eid = row.ticketType.eventId
+    ticketsByEvent.set(eid, (ticketsByEvent.get(eid) ?? 0) + row.quantity)
+  }
+
+  const topEvents = topRevenue.map((item) => {
+    const event = eventMap.get(item.eventId)
+    return {
+      eventId: item.eventId,
+      title: event?.title ?? 'Unknown',
+      revenue: Number(item._sum?.totalAmount?.toString() ?? '0'),
+      ticketsSold: ticketsByEvent.get(item.eventId) ?? 0,
+      startDate: event?.startDate ?? new Date(),
+      categories: event?.categories.map((c) => c.category.name) ?? [],
+    }
+  })
+
+  // Build 30-day trend maps (all days initialised to 0)
+  const revenueMap = new Map<string, number>()
+  const ticketsMap = new Map<string, number>()
   for (let i = 29; i >= 0; i--) {
     const d = new Date(now)
     d.setDate(d.getDate() - i)
-    dailyMap.set(d.toISOString().slice(0, 10), 0)
+    const key = d.toISOString().slice(0, 10)
+    revenueMap.set(key, 0)
+    ticketsMap.set(key, 0)
   }
   for (const o of trendOrders) {
     const day = o.createdAt.toISOString().slice(0, 10)
-    if (dailyMap.has(day)) {
-      dailyMap.set(day, (dailyMap.get(day) ?? 0) + Number(o.totalAmount.toString()))
+    if (revenueMap.has(day)) {
+      revenueMap.set(day, (revenueMap.get(day) ?? 0) + Number(o.totalAmount.toString()))
+      const qty = o.items.reduce((s, item) => s + item.quantity, 0)
+      ticketsMap.set(day, (ticketsMap.get(day) ?? 0) + qty)
     }
   }
-  const dailySales = Array.from(dailyMap.entries()).map(([date, revenue]) => ({
+  const dailySales = Array.from(revenueMap.keys()).map((date) => ({
     date,
-    revenue,
+    revenue: revenueMap.get(date) ?? 0,
+    ticketsSold: ticketsMap.get(date) ?? 0,
   }))
 
   return { topEvents, dailySales }

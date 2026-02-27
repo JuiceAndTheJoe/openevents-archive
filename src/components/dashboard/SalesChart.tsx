@@ -1,39 +1,76 @@
+import Link from 'next/link'
+import { Calendar } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+
+type TopEvent = {
+  eventId: string
+  title: string
+  revenue: number
+  ticketsSold: number
+  startDate: Date
+  categories: string[]
+}
 
 type SalesChartProps = {
   title?: string
-  data: Array<{
-    label: string
-    value: number
-  }>
+  data: TopEvent[]
   currency?: string
-  formatter?: (value: number) => string
 }
 
-export function SalesChart({ title = 'Sales Breakdown', data, formatter, currency = 'SEK' }: SalesChartProps) {
-  const maxValue = Math.max(...data.map((item) => item.value), 0)
-  const formatValue = formatter ?? ((v: number) => formatCurrency(v, currency))
+function formatStartDate(date: Date): string {
+  return new Date(date).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
 
+export function SalesChart({ title = 'Top Selling Events', data, currency = 'SEK' }: SalesChartProps) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+    <section className="rounded-[14px] border border-[#f3f4f6] bg-white p-6 shadow-md">
+      <h3 className="text-2xl font-bold text-gray-900">{title}</h3>
+
       {data.length === 0 ? (
-        <p className="mt-3 text-sm text-gray-500">No sales data yet.</p>
+        <p className="mt-4 text-sm text-gray-500">No sales data yet.</p>
       ) : (
-        <div className="mt-4 space-y-3">
-          {data.map((item, i) => (
-            <div key={i}>
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="text-gray-700">{item.label}</span>
-                <span className="font-medium text-gray-900">{formatValue(item.value)}</span>
+        <div className="mt-6 flex flex-col gap-4">
+          {data.map((event, i) => (
+            <Link
+              key={event.eventId}
+              href={`/dashboard/events/${event.eventId}`}
+              className="flex items-start gap-4 rounded-[10px] bg-[#f9fafb] px-4 pt-4 pb-4 transition-colors hover:bg-gray-100"
+            >
+              {/* Rank badge */}
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#5c8bd9]">
+                <span className="text-base font-bold leading-none text-white">{i + 1}</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                <div
-                  className="h-full rounded-full bg-blue-600"
-                  style={{ width: `${maxValue === 0 ? 0 : (item.value / maxValue) * 100}%` }}
-                />
+
+              {/* Event info */}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-base font-semibold text-gray-900">{event.title}</p>
+                <div className="mt-1 flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4 shrink-0 text-[#4a5565]" />
+                    <span className="whitespace-nowrap text-sm text-[#4a5565]">
+                      {formatStartDate(event.startDate)}
+                    </span>
+                  </div>
+                  {event.categories.length > 0 && (
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs text-[#4a5565]">
+                      {event.categories[0]}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
+
+              {/* Revenue + tickets */}
+              <div className="shrink-0 text-right">
+                <p className="text-lg font-bold text-[#5c8bd9]">
+                  {formatCurrency(event.revenue, currency)}
+                </p>
+                <p className="text-sm text-[#4a5565]">{event.ticketsSold} tickets</p>
+              </div>
+            </Link>
           ))}
         </div>
       )}

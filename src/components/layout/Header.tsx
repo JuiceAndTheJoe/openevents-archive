@@ -15,7 +15,6 @@ export function Header() {
   const isOrganizer = session?.user?.roles?.includes('ORGANIZER')
   const isSuperAdmin = session?.user?.roles?.includes('SUPER_ADMIN')
   const canManageEvents = Boolean(isOrganizer || isSuperAdmin)
-  const canAccessMyEvents = Boolean(isOrganizer)
   const avatarFallback = (session?.user?.email?.[0] || 'U').toUpperCase()
   const displayName = session?.user?.name?.trim() || session?.user?.email?.split('@')[0] || 'Account'
   const profileHref = isOrganizer ? '/dashboard/profile' : '/profile'
@@ -64,14 +63,6 @@ export function Header() {
                 className="inline-flex min-w-[132px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
               >
                 Create Event
-              </Link>
-            )}
-            {canAccessMyEvents && (
-              <Link
-                href="/my-events"
-                className="text-gray-600 hover:text-gray-900 font-medium"
-              >
-                My Events
               </Link>
             )}
             {status === 'authenticated' ? (
@@ -206,15 +197,6 @@ export function Header() {
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Create Event
-              </Link>
-            )}
-            {canAccessMyEvents && (
-              <Link
-                href="/my-events"
-                className="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-md"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                My Events
               </Link>
             )}
 

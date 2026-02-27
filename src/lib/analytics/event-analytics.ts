@@ -24,7 +24,7 @@ export type EventAnalytics = {
     refunded: number
     total: number
   }
-  dailySales: Array<{ date: string; revenue: number }>
+  dailySales: Array<{ date: string; revenue: number; ticketsSold: number }>
 }
 
 async function fetchEventAnalytics(eventId: string): Promise<EventAnalytics> {
@@ -63,7 +63,11 @@ async function fetchEventAnalytics(eventId: string): Promise<EventAnalytics> {
           status: { in: revenueStatuses },
           createdAt: { gte: thirtyDaysAgo },
         },
-        select: { totalAmount: true, createdAt: true },
+        select: {
+          totalAmount: true,
+          createdAt: true,
+          items: { select: { quantity: true } },
+        },
       }),
     ])
 
@@ -90,22 +94,28 @@ async function fetchEventAnalytics(eventId: string): Promise<EventAnalytics> {
 
   const totalTicketsSold = ticketsByType.reduce((s, t) => s + t.sold, 0)
 
-  // Build 30-day trend map (all days initialised to 0)
-  const dailyMap = new Map<string, number>()
+  // Build 30-day trend maps (all days initialised to 0)
+  const revenueMap = new Map<string, number>()
+  const ticketsMap = new Map<string, number>()
   for (let i = 29; i >= 0; i--) {
     const d = new Date(now)
     d.setDate(d.getDate() - i)
-    dailyMap.set(d.toISOString().slice(0, 10), 0)
+    const key = d.toISOString().slice(0, 10)
+    revenueMap.set(key, 0)
+    ticketsMap.set(key, 0)
   }
   for (const o of trendOrders) {
     const day = o.createdAt.toISOString().slice(0, 10)
-    if (dailyMap.has(day)) {
-      dailyMap.set(day, (dailyMap.get(day) ?? 0) + Number(o.totalAmount.toString()))
+    if (revenueMap.has(day)) {
+      revenueMap.set(day, (revenueMap.get(day) ?? 0) + Number(o.totalAmount.toString()))
+      const qty = o.items.reduce((s, item) => s + item.quantity, 0)
+      ticketsMap.set(day, (ticketsMap.get(day) ?? 0) + qty)
     }
   }
-  const dailySales = Array.from(dailyMap.entries()).map(([date, revenue]) => ({
+  const dailySales = Array.from(revenueMap.keys()).map((date) => ({
     date,
-    revenue,
+    revenue: revenueMap.get(date) ?? 0,
+    ticketsSold: ticketsMap.get(date) ?? 0,
   }))
 
   return {

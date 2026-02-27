@@ -119,15 +119,15 @@ export default async function DashboardHomePage() {
       {/* Analytics section */}
       <div>
         <h2 className="mb-4 text-xl font-semibold text-gray-900">Analytics</h2>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <SalesChart
-            title="Top Events by Revenue"
-            data={analytics.topEvents.map((e) => ({ label: e.title, value: e.revenue }))}
-          />
+        <div className="space-y-6">
           <SalesTrendChart
             title="Sales Trend – Last 30 Days"
             noDataText="No data yet."
             data={analytics.dailySales}
+          />
+          <SalesChart
+            title="Top Selling Events"
+            data={analytics.topEvents}
           />
         </div>
       </div>
