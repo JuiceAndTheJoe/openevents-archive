@@ -98,57 +98,20 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
     timeZone: displayTimeZone,
     day: 'numeric',
   }).format(event.startDate)
-  const endDateLabel = new Intl.DateTimeFormat('en', {
-    month: 'long',
-    timeZone: displayTimeZone,
-    day: 'numeric',
-  }).format(event.endDate)
   const startTimeLabel = new Intl.DateTimeFormat('en', {
     hour: 'numeric',
     minute: '2-digit',
     timeZone: displayTimeZone,
     timeZoneName: 'short',
   }).format(event.startDate)
-  const endTimeLabel = new Intl.DateTimeFormat('en', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: displayTimeZone,
-    timeZoneName: 'short',
-  }).format(event.endDate)
   const startDateShortLabel = new Intl.DateTimeFormat('en', {
     month: 'long',
     day: 'numeric',
     timeZone: displayTimeZone,
   }).format(event.startDate)
-  const endDateShortLabel = new Intl.DateTimeFormat('en', {
-    month: 'long',
-    day: 'numeric',
-    timeZone: displayTimeZone,
-  }).format(event.endDate)
-  const rightDateLabel = startDateShortLabel === endDateShortLabel
-    ? startDateShortLabel
-    : `${startDateShortLabel} - ${endDateShortLabel}`
-  const startTimeNoTz = new Intl.DateTimeFormat('en', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: displayTimeZone,
-  }).format(event.startDate)
-  const endTimeNoTz = new Intl.DateTimeFormat('en', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: displayTimeZone,
-  }).format(event.endDate)
-  const timeZoneLabel =
-    new Intl.DateTimeFormat('en', {
-      timeZone: displayTimeZone,
-      timeZoneName: 'short',
-    })
-      .formatToParts(event.startDate)
-      .find((part) => part.type === 'timeZoneName')
-      ?.value || ''
-  const rightTimeLabel = `${startTimeNoTz} - ${endTimeNoTz}${timeZoneLabel ? ` ${timeZoneLabel}` : ''}`
+  const rightDateLabel = startDateShortLabel
+  const rightTimeLabel = startTimeLabel
   const startDateTimeLabel = `${startDateLabel} at ${startTimeLabel}`
-  const endDateTimeLabel = `${endDateLabel} at ${endTimeLabel}`
   const notice = firstQueryValue(query.notice)
   const noticeMessage = notice === 'created'
     ? 'Event created'
@@ -183,7 +146,7 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
   }))
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-5xl space-y-7 px-4 py-6 sm:px-6 lg:px-8">
       <EventNoticeToast message={noticeMessage} />
       {checkoutUnavailableMessage && (
         <div
@@ -193,39 +156,39 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
           {checkoutUnavailableMessage}
         </div>
       )}
-      <section className="relative overflow-hidden rounded-xl bg-gray-900">
+      <section className="relative overflow-hidden rounded-2xl bg-gray-900">
         {event.coverImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={coverImageSrc}
             alt={event.title}
-            className="h-[230px] w-full object-cover sm:h-[340px]"
+            className="h-[220px] w-full object-cover sm:h-[300px] lg:h-[390px]"
           />
         ) : (
-          <div className="h-[230px] bg-gradient-to-r from-slate-700 to-slate-900 sm:h-[340px]" />
+          <div className="h-[220px] bg-gradient-to-r from-slate-700 to-slate-900 sm:h-[300px] lg:h-[390px]" />
         )}
         <button
           type="button"
-          className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] transition hover:opacity-80"
+          className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] transition hover:opacity-80"
           aria-label="Add to favourites"
         >
-          <Heart className="h-5 w-5 text-gray-400" />
+          <Heart className="h-6 w-6 text-gray-400" />
         </button>
       </section>
 
       <section className="border-b border-[#bfbfbf] pb-8">
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+        <div className="flex flex-col gap-7 lg:flex-row lg:items-start lg:gap-10">
 
           {/* Left column: event info */}
           <div className="flex flex-1 flex-col gap-[14px]">
             <h1
-              className="text-[48px] font-bold leading-none text-black"
+              className="text-4xl font-bold leading-none text-black sm:text-5xl lg:text-[56px]"
               style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
             >
               {event.title}
             </h1>
             <p
-              className="text-[24px] text-black"
+              className="text-[20px] text-black"
               style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
             >
               By <span className="font-semibold">{event.organizer.orgName}</span>
@@ -233,7 +196,7 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
             <div className="flex flex-col gap-[12px]">
               {event.locationType !== 'ONLINE' ? (
                 <div className="flex items-start gap-[16px]">
-                  <MapPin className="mt-1 h-5 w-5 shrink-0 text-[#364153]" />
+                  <MapPin className="mt-1 h-6 w-6 shrink-0 text-[#364153]" />
                   <div className="flex flex-col">
                     {event.venue && (
                       <span
@@ -245,7 +208,7 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
                     )}
                     {locationText && (
                       <span
-                        className="text-[18px] font-normal leading-7 text-[#4a5565]"
+                        className="text-[17px] font-normal leading-7 text-[#4a5565]"
                         style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
                       >
                         {locationText}
@@ -263,7 +226,7 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
                 </div>
               ) : (
                 <div className="flex items-center gap-[16px]">
-                  <MapPin className="h-5 w-5 shrink-0 text-[#364153]" />
+                  <MapPin className="h-6 w-6 shrink-0 text-[#364153]" />
                   <span
                     className="text-[18px] font-semibold text-[#364153]"
                     style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
@@ -272,31 +235,20 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
                   </span>
                 </div>
               )}
-              <div className="flex flex-col gap-[10px]">
-                <div className="flex items-center gap-[12px]">
-                  <Calendar className="h-10 w-10 shrink-0 text-[#364153]" />
-                  <span
-                    className="text-[18px] leading-7 text-[#364153]"
-                    style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
-                  >
-                    Start: {startDateTimeLabel}
-                  </span>
-                </div>
-                <div className="flex items-center gap-[12px]">
-                  <Calendar className="h-10 w-10 shrink-0 text-[#364153]" />
-                  <span
-                    className="text-[18px] leading-7 text-[#364153]"
-                    style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
-                  >
-                    End: {endDateTimeLabel}
-                  </span>
-                </div>
+              <div className="flex items-center gap-[12px]">
+                <Calendar className="h-7 w-7 shrink-0 text-[#364153]" />
+                <span
+                  className="text-[17px] leading-7 text-[#364153]"
+                  style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
+                >
+                  {startDateTimeLabel}
+                </span>
               </div>
             </div>
           </div>
 
           {/* Right column: edit button (top-right) + price section */}
-          <div className="flex w-full flex-col lg:w-[247px] lg:shrink-0">
+          <div className="flex w-full flex-col lg:w-[320px] lg:shrink-0">
 
             {/* Edit button (node 239-221) — pill, right-aligned, flush above price */}
             <Link
@@ -310,7 +262,7 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
 
             {/* Price — 2px below edit button, height 36px */}
             <p
-              className="mt-0.5 text-[30px] font-bold leading-[36px] text-[#5c8bd9]"
+              className="mt-0.5 text-[24px] font-bold leading-[30px] text-[#5c8bd9]"
               style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
             >
               {formattedMinPrice === null ? 'Free' : `From ${formattedMinPrice}`}
@@ -318,7 +270,7 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
 
             {/* Start */}
             <p
-              className="mt-1 text-[16px] leading-6 text-[#364153]"
+              className="mt-1 text-[15px] leading-6 text-[#364153]"
               style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
             >
               {rightDateLabel}
@@ -326,7 +278,7 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
 
             {/* End */}
             <p
-              className="text-[16px] leading-6 text-[#364153]"
+              className="text-[15px] leading-6 text-[#364153]"
               style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
             >
               {rightTimeLabel}
@@ -336,13 +288,13 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
             {event.status === 'PUBLISHED' ? (
               <Link
                 href={`/events/${event.slug}/checkout`}
-                className="mt-4 flex h-[60px] items-center justify-center rounded-[14px] bg-[#5c8bd9] text-[24px] font-semibold text-white transition hover:bg-[#4a7ac8]"
+                className="mt-4 flex h-[52px] items-center justify-center rounded-[12px] bg-[#5c8bd9] text-[18px] font-semibold text-white transition hover:bg-[#4a7ac8]"
                 style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
               >
                 Get tickets
               </Link>
             ) : (
-              <span className="mt-4 flex h-[60px] items-center justify-center rounded-[14px] border border-gray-300 bg-white text-[24px] font-semibold text-gray-500">
+              <span className="mt-4 flex h-[52px] items-center justify-center rounded-[12px] border border-gray-300 bg-white text-[18px] font-semibold text-gray-500">
                 Draft preview
               </span>
             )}
@@ -365,14 +317,14 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
 
       <section className="border-b border-gray-300 pb-8">
         <h2
-          className="text-[30px] font-bold leading-[36px] text-black"
+          className="text-[28px] font-bold leading-[34px] text-black"
           style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
         >
           Overview
         </h2>
         <div
           className={`mt-4 grid grid-cols-1 gap-6 ${
-            event.locationType !== 'ONLINE' ? 'lg:grid-cols-[1fr_270px]' : ''
+            event.locationType !== 'ONLINE' ? 'lg:grid-cols-[1fr_280px]' : ''
           }`}
         >
           <div>
