@@ -54,7 +54,6 @@ export default async function OrganizerProfilePage() {
       select: {
         id: true,
         title: true,
-        slug: true,
         status: true,
         startDate: true,
         venue: true,
@@ -163,7 +162,7 @@ export default async function OrganizerProfilePage() {
                   <div className="flex items-center gap-2">
                     <EventStatusBadge status={event.status} />
                     <Link
-                      href={`/events/${event.slug}`}
+                      href={`/dashboard/events/${event.id}`}
                       className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                     >
                       View
