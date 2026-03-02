@@ -136,6 +136,82 @@ type SpeakerCropSession = {
   mimeType: string
 }
 
+function buildTicketSnapshot(ticket: TicketTypeDraft) {
+  return {
+    id: ticket.id || '',
+    name: ticket.name.trim(),
+    price: ticket.price.trim(),
+    currency: normalizeTicketCurrency(ticket.currency),
+    capacity: ticket.capacity.trim(),
+  }
+}
+
+function buildSpeakerSnapshot(speakerDraft: SpeakerDraft) {
+  return {
+    speakerId: speakerDraft.speakerId || '',
+    name: speakerDraft.name.trim(),
+    title: speakerDraft.title.trim(),
+    organization: speakerDraft.organization.trim(),
+    publicUrl: speakerDraft.publicUrl || '',
+  }
+}
+
+function buildPromoCodeSnapshot(promoCode: PromoCodeDraft) {
+  return {
+    id: promoCode.id || '',
+    code: promoCode.code.trim().toUpperCase(),
+    discountValue: promoCode.discountValue.trim(),
+    ticketTypeId: promoCode.ticketTypeId || '',
+    maxUses: promoCode.maxUses.trim(),
+    minCartAmount: promoCode.minCartAmount.trim(),
+  }
+}
+
+function buildDraftStateSnapshot(form: EventFormData, speakerDrafts: SpeakerDraft[], promoCodes: PromoCodeDraft[]) {
+  const formSnapshot = JSON.parse(buildSnapshot(form)) as Record<string, unknown>
+
+  return JSON.stringify({
+    ...formSnapshot,
+    speakerDrafts: speakerDrafts.map((draft) => buildSpeakerSnapshot(draft)),
+    promoCodes: promoCodes.map((promoCode) => buildPromoCodeSnapshot(promoCode)),
+  })
+}
+
+function buildEventPayload(
+  form: EventFormData,
+  speakerDrafts: SpeakerDraft[],
+  startUtc: string,
+  endUtc: string
+) {
+  const safeTimezone = isValidTimeZone(form.timezone) ? form.timezone : 'UTC'
+  const validSpeakerDrafts = speakerDrafts.filter((draft) => draft.name.trim())
+
+  return {
+    ...form,
+    timezone: safeTimezone,
+    startDate: startUtc,
+    endDate: endUtc,
+    description: form.description || '',
+    descriptionHtml: undefined,
+    onlineUrl: form.onlineUrl?.trim() ? form.onlineUrl.trim() : null,
+    coverImage: form.coverImage || null,
+    bottomImage: form.bottomImage || null,
+    videoUrl: form.videoUrl || null,
+    speakerNames: validSpeakerDrafts.map((draft) => draft.name.trim()),
+    organizerNames: validSpeakerDrafts.map((draft) => draft.title),
+    sponsorNames: validSpeakerDrafts.map((draft) => draft.organization),
+    speakerPhotos: validSpeakerDrafts.map((draft) => draft.publicUrl),
+    categoryIds: form.categoryIds,
+    ticketTypes: undefined,
+    ticketTypeId: undefined,
+    ticketTypeName: undefined,
+    ticketPrice: undefined,
+    ticketCurrency: undefined,
+    ticketCapacity: undefined,
+    status: undefined,
+  }
+}
+
 // ── Date & Time picker helpers (module-level, never recreated) ────────────────
 
 const WEEKDAY_LABELS = Array.from({ length: 7 }, (_, i) =>
@@ -548,13 +624,7 @@ function buildSnapshot(form: EventFormData) {
     country: form.country || '',
     postalCode: form.postalCode || '',
     onlineUrl: form.onlineUrl || '',
-    ticketTypes: (form.ticketTypes || []).map((ticket) => ({
-      id: ticket.id || '',
-      name: ticket.name.trim(),
-      price: ticket.price.trim(),
-      currency: normalizeTicketCurrency(ticket.currency),
-      capacity: ticket.capacity.trim(),
-    })),
+    ticketTypes: (form.ticketTypes || []).map((ticket) => buildTicketSnapshot(ticket)),
     speakerNames: form.speakerNames || '',
     organizerNames: form.organizerNames || '',
     sponsorNames: form.sponsorNames || '',
@@ -601,6 +671,21 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
     })]
   }, [mergedInitialData])
 
+  const initialSpeakerDrafts = useMemo<SpeakerDraft[]>(() =>
+    (initialSpeakers ?? []).map((speaker, index) => ({
+      key: `speaker-init-${index}`,
+      speakerId: speaker.id,
+      name: speaker.name,
+      title: speaker.title,
+      organization: speaker.organization,
+      originalFile: null,
+      croppedFile: null,
+      previewUrl: null,
+      publicUrl: speaker.photo,
+      isUploading: false,
+    })),
+  [initialSpeakers])
+
   const initialFormState = useMemo<EventFormData>(() => ({
     ...mergedInitialData,
     timezone: normalizedInitialTimezone,
@@ -611,7 +696,10 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
     ticketCurrency: normalizeTicketCurrency(mergedInitialData.ticketCurrency),
   }), [initialTicketTypes, mergedInitialData, normalizedInitialTimezone])
 
-  const initialSnapshotRef = useRef(buildSnapshot(initialFormState))
+  const initialPersistedSnapshot = useMemo(
+    () => buildDraftStateSnapshot(initialFormState, initialSpeakerDrafts, initialPromoCodes),
+    [initialFormState, initialPromoCodes, initialSpeakerDrafts]
+  )
 
   const [form, setForm] = useState<EventFormData>(initialFormState)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -637,6 +725,7 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null)
+  const progressTrackerRef = useRef<HTMLElement | null>(null)
   const [isUnitOpen, setIsUnitOpen] = useState(false)
   const unitDropdownRef = useRef<HTMLDivElement | null>(null)
   const [openDateTimePanel, setOpenDateTimePanel] = useState<'startDate' | 'endDate' | 'startTime' | 'endTime' | null>(null)
@@ -654,20 +743,7 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
   const [cropZoom, setCropZoom] = useState(1)
   const [cropPixels, setCropPixels] = useState<Area | null>(null)
   const [activeDropTarget, setActiveDropTarget] = useState<ImageTargetField | null>(null)
-  const [speakerDrafts, setSpeakerDrafts] = useState<SpeakerDraft[]>(() =>
-    (initialSpeakers ?? []).map((s, i) => ({
-      key: `speaker-init-${i}`,
-      speakerId: s.id,
-      name: s.name,
-      title: s.title,
-      organization: s.organization,
-      originalFile: null,
-      croppedFile: null,
-      previewUrl: null,
-      publicUrl: s.photo,
-      isUploading: false,
-    }))
-  )
+  const [speakerDrafts, setSpeakerDrafts] = useState<SpeakerDraft[]>(initialSpeakerDrafts)
   const [speakerCropSession, setSpeakerCropSession] = useState<SpeakerCropSession | null>(null)
   const [speakerCropPosition, setSpeakerCropPosition] = useState({ x: 0, y: 0 })
   const [speakerCropZoom, setSpeakerCropZoom] = useState(1)
@@ -690,11 +766,99 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
   )
 
   const [promoCodes, setPromoCodes] = useState<PromoCodeDraft[]>(initialPromoCodes)
+  const [persistedSnapshot, setPersistedSnapshot] = useState(initialPersistedSnapshot)
+  const [isAutosaving, setIsAutosaving] = useState(false)
+  const [hasExplicitTimes, setHasExplicitTimes] = useState(() => ({
+    startDate: Boolean(initialFormState.startDate.split('T')[1]),
+    endDate: Boolean(initialFormState.endDate.split('T')[1]),
+  }))
+  const [isPrimaryProgressVisible, setIsPrimaryProgressVisible] = useState(true)
+  const [recentlyCompletedStep, setRecentlyCompletedStep] = useState<string | null>(null)
   const persistedPromoCodeIdsRef = useRef(
     new Set(initialPromoCodes.map((c) => c.id).filter((id): id is string => Boolean(id)))
   )
+  const persistedSnapshotRef = useRef(initialPersistedSnapshot)
+  const autosaveInFlightRef = useRef(false)
+  const formRef = useRef(form)
+  const speakerDraftsRef = useRef(speakerDrafts)
+  const promoCodesRef = useRef(promoCodes)
+  const isSubmittingRef = useRef(isSubmitting)
+  const currentDraftSnapshot = useMemo(
+    () => buildDraftStateSnapshot(form, speakerDrafts, promoCodes),
+    [form, promoCodes, speakerDrafts]
+  )
+  const hasUnsavedChanges = currentDraftSnapshot !== persistedSnapshot
+  const previousProgressStateRef = useRef<Record<string, boolean>>({})
 
   const timezoneOptions = useMemo(() => loadTimezoneOptions(normalizedInitialTimezone), [normalizedInitialTimezone])
+
+  const eventDetailsComplete =
+    !getFieldValidationMessage('title', form, 'submit-publish') &&
+    !getFieldValidationMessage('description', form, 'submit-publish') &&
+    (categories.length === 0 || !getFieldValidationMessage('categoryIds', form, 'submit-publish'))
+
+  const dateTimeComplete =
+    !getFieldValidationMessage('startDate', form, 'submit-publish') &&
+    !getFieldValidationMessage('endDate', form, 'submit-publish') &&
+    !getFieldValidationMessage('timezone', form, 'submit-publish') &&
+    hasExplicitTimes.startDate &&
+    hasExplicitTimes.endDate
+
+  const locationComplete =
+    !getFieldValidationMessage('venue', form, 'submit-publish') &&
+    !getFieldValidationMessage('address', form, 'submit-publish') &&
+    !getFieldValidationMessage('city', form, 'submit-publish') &&
+    !getFieldValidationMessage('country', form, 'submit-publish') &&
+    !getFieldValidationMessage('onlineUrl', form, 'submit-publish')
+
+  const ticketTypes = form.ticketTypes || []
+  const ticketTypeCount = ticketTypes.filter((ticket) => hasAnyTicketInput(ticket)).length
+  const ticketsComplete = ticketTypes.some((ticket, index) =>
+    hasAnyTicketInput(ticket) && ticketFieldOrder.every((field) => !getTicketFieldValidationMessage(ticketTypes, index, field))
+  )
+  const ticketTypeCountLabel = `${ticketTypeCount} ticket type${ticketTypeCount === 1 ? '' : 's'}`
+
+  const progressSteps = useMemo(() => [
+    {
+      label: 'Event Details',
+      description: 'Title, category, and description',
+      complete: eventDetailsComplete,
+      indicator: eventDetailsComplete ? '✓' : '1',
+      statusText: eventDetailsComplete ? 'Complete' : 'In progress',
+    },
+    {
+      label: 'Date & Time',
+      description: 'Schedule and timezone details',
+      complete: dateTimeComplete,
+      indicator: dateTimeComplete ? '✓' : '2',
+      statusText: dateTimeComplete ? 'Complete' : 'In progress',
+    },
+    {
+      label: 'Location',
+      description: 'Venue and online attendance details',
+      complete: locationComplete,
+      indicator: locationComplete ? '✓' : '3',
+      statusText: locationComplete ? 'Complete' : 'In progress',
+    },
+    {
+      label: 'Tickets',
+      description: 'At least one complete ticket type',
+      complete: ticketsComplete,
+      indicator: String(ticketTypeCount),
+      statusText: ticketTypeCountLabel,
+    },
+  ], [
+    dateTimeComplete,
+    eventDetailsComplete,
+    locationComplete,
+    ticketTypeCount,
+    ticketTypeCountLabel,
+    ticketsComplete,
+  ])
+  const completedStepCount = progressSteps.filter((step) => step.complete).length
+  const activeProgressStep = progressSteps.find((step) => !step.complete) || progressSteps[progressSteps.length - 1]
+  const stepsRemainingCount = progressSteps.filter((step) => !step.complete).length
+  const floatingProgressLabel = stepsRemainingCount === 0 ? 'Ready to publish' : activeProgressStep.label
 
   const setFieldValidationState = (key: FieldKey, message?: string) => {
     setFieldErrors((current) => {
@@ -815,7 +979,10 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
 
   const updateTimePart = (field: 'startDate' | 'endDate', timePart: string) => {
     const datePart = getDatePart(form[field])
-    if (datePart) updateField(field, `${datePart}T${timePart}`)
+    if (datePart) {
+      updateField(field, `${datePart}T${timePart}`)
+      setHasExplicitTimes((current) => ({ ...current, [field]: true }))
+    }
   }
 
   const updateHourPart = (field: 'startDate' | 'endDate', hour: string) => {
@@ -1048,6 +1215,52 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
   }, [])
 
   useEffect(() => {
+    const currentProgressState = Object.fromEntries(
+      progressSteps.map((step) => [step.label, step.complete])
+    ) as Record<string, boolean>
+    const previousProgressState = previousProgressStateRef.current
+
+    if (Object.keys(previousProgressState).length === 0) {
+      previousProgressStateRef.current = currentProgressState
+      return
+    }
+
+    const newlyCompletedStep = progressSteps.find((step) => step.complete && !previousProgressState[step.label])
+    previousProgressStateRef.current = currentProgressState
+
+    if (!newlyCompletedStep) return
+
+    const feedbackMessage = `${newlyCompletedStep.label} complete`
+    setRecentlyCompletedStep(feedbackMessage)
+
+    const timeoutId = window.setTimeout(() => {
+      setRecentlyCompletedStep((current) => (current === feedbackMessage ? null : current))
+    }, 3200)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [dateTimeComplete, eventDetailsComplete, locationComplete, progressSteps, ticketsComplete])
+
+  useEffect(() => {
+    const progressTrackerElement = progressTrackerRef.current
+    if (!progressTrackerElement || typeof IntersectionObserver === 'undefined') {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsPrimaryProgressVisible(entry.isIntersecting)
+      },
+      {
+        threshold: 0.25,
+      }
+    )
+
+    observer.observe(progressTrackerElement)
+
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
     if (!isCategoryOpen) return
     function handleClickOutside(event: MouseEvent) {
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
@@ -1104,6 +1317,157 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
       }
     }
   }, [])
+
+  useEffect(() => {
+    formRef.current = form
+  }, [form])
+
+  useEffect(() => {
+    speakerDraftsRef.current = speakerDrafts
+  }, [speakerDrafts])
+
+  useEffect(() => {
+    promoCodesRef.current = promoCodes
+  }, [promoCodes])
+
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting
+  }, [isSubmitting])
+
+  useEffect(() => {
+    persistedSnapshotRef.current = persistedSnapshot
+  }, [persistedSnapshot])
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    const handleDocumentNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) return
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+
+      const target = event.target
+      if (!(target instanceof Element)) return
+
+      const link = target.closest('a[href]')
+      if (!(link instanceof HTMLAnchorElement)) return
+      if (link.target && link.target !== '_self') return
+      if (link.hasAttribute('download')) return
+
+      const href = link.getAttribute('href')
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) {
+        return
+      }
+
+      const destination = new URL(link.href, window.location.href)
+      if (destination.href === window.location.href) return
+
+      if (!window.confirm('Discard unsaved changes?')) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    document.addEventListener('click', handleDocumentNavigation, true)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      document.removeEventListener('click', handleDocumentNavigation, true)
+    }
+  }, [hasUnsavedChanges])
+
+  useEffect(() => {
+    if (mode !== 'edit' || !form.id) return
+
+    const intervalId = window.setInterval(() => {
+      if (autosaveInFlightRef.current || isSubmittingRef.current) {
+        return
+      }
+
+      if (persistedSnapshotRef.current === buildDraftStateSnapshot(formRef.current, speakerDraftsRef.current, promoCodesRef.current)) {
+        return
+      }
+
+      const currentForm = formRef.current
+      const currentSpeakerDrafts = speakerDraftsRef.current
+      const currentPromoCodes = promoCodesRef.current
+      const currentTicketTypes = currentForm.ticketTypes || []
+
+      if (!currentForm.id || !currentForm.title.trim()) return
+      if (isUploadingBanner || isUploadingBottom || isUploadingVideo || isPreparingCrop || isApplyingCrop || isApplyingSpeakerCrop) return
+      if (currentSpeakerDrafts.some((draft) => draft.isUploading)) return
+
+      const timezone = isValidTimeZone(currentForm.timezone) ? currentForm.timezone : 'UTC'
+      const startUtc = dateTimeLocalInTimeZoneToUtcIso(currentForm.startDate, timezone)
+      const endUtc = dateTimeLocalInTimeZoneToUtcIso(currentForm.endDate, timezone)
+
+      if (!startUtc || !endUtc || new Date(endUtc) <= new Date(startUtc)) return
+
+      const onlineUrl = currentForm.onlineUrl?.trim() || ''
+      if (onlineUrl && !isValidUrl(onlineUrl)) return
+
+      const hasInvalidTickets = currentTicketTypes.some((ticket, index) =>
+        hasAnyTicketInput(ticket) && ticketFieldOrder.some((field) => Boolean(getTicketFieldValidationMessage(currentTicketTypes, index, field)))
+      )
+
+      if (hasInvalidTickets) return
+
+      const eventSnapshot = buildDraftStateSnapshot(currentForm, currentSpeakerDrafts, currentPromoCodes)
+      const payload = buildEventPayload(currentForm, currentSpeakerDrafts, startUtc, endUtc)
+
+      autosaveInFlightRef.current = true
+      setIsAutosaving(true)
+
+      void (async () => {
+        try {
+          const eventRes = await fetch(`/api/events/${currentForm.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+
+          if (!eventRes.ok) {
+            return
+          }
+
+          const savedTicketTypes = await syncTicketTypes(currentForm.id!, 'save', currentTicketTypes)
+          const savedPromoCodes = await syncPromoCodes(currentForm.id!, savedTicketTypes ?? [], currentPromoCodes)
+          const savedSnapshot = buildDraftStateSnapshot(
+            { ...currentForm, ticketTypes: savedTicketTypes },
+            currentSpeakerDrafts,
+            savedPromoCodes
+          )
+
+          if (persistedSnapshotRef.current !== eventSnapshot) {
+            persistedSnapshotRef.current = savedSnapshot
+            setPersistedSnapshot(savedSnapshot)
+          }
+        } catch {
+          // Keep autosave failures non-blocking.
+        } finally {
+          autosaveInFlightRef.current = false
+          setIsAutosaving(false)
+        }
+      })()
+    }, 30000)
+
+    return () => window.clearInterval(intervalId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    form.id,
+    isApplyingCrop,
+    isApplyingSpeakerCrop,
+    isPreparingCrop,
+    isUploadingBanner,
+    isUploadingBottom,
+    isUploadingVideo,
+    mode,
+  ])
 
   function openCropper(file: File, targetField: ImageTargetField) {
     cleanupCropObjectUrl()
@@ -1198,9 +1562,13 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
     return nextErrors
   }
 
-  async function syncTicketTypes(eventId: string, action: 'save' | 'publish') {
+  async function syncTicketTypes(
+    eventId: string,
+    action: 'save' | 'publish',
+    ticketTypesInput: TicketTypeDraft[] = form.ticketTypes || []
+  ) {
     const requireComplete = action === 'publish'
-    const ticketTypes = form.ticketTypes || []
+    const ticketTypes = ticketTypesInput
     const ticketTypeIdsInForm = new Set(
       ticketTypes.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId))
     )
@@ -1277,14 +1645,37 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
     }
 
     persistedTicketTypeIdsRef.current = nextPersistedIds
-    setForm((current) => ({
-      ...current,
-      ticketTypes: nextTicketTypes,
-    }))
+    setForm((current) => {
+      const currentTicketTypes = current.ticketTypes || []
+
+      return {
+        ...current,
+        ticketTypes: currentTicketTypes.map((ticket, index) => {
+          const savedTicket = nextTicketTypes[index]
+          const originalTicket = ticketTypes[index]
+
+          if (!savedTicket?.id || ticket.id || !originalTicket) {
+            return ticket
+          }
+
+          const matchesSavedDraft =
+            buildTicketSnapshot(ticket).name === buildTicketSnapshot(originalTicket).name &&
+            buildTicketSnapshot(ticket).price === buildTicketSnapshot(originalTicket).price &&
+            buildTicketSnapshot(ticket).currency === buildTicketSnapshot(originalTicket).currency &&
+            buildTicketSnapshot(ticket).capacity === buildTicketSnapshot(originalTicket).capacity
+
+          return matchesSavedDraft ? { ...ticket, id: savedTicket.id } : ticket
+        }),
+      }
+    })
     return nextTicketTypes
   }
 
-  async function syncPromoCodes(eventId: string, savedTicketTypes: TicketTypeDraft[]) {
+  async function syncPromoCodes(
+    eventId: string,
+    savedTicketTypes: TicketTypeDraft[],
+    promoCodesInput: PromoCodeDraft[] = promoCodes
+  ) {
     // Build a map from temp index-based IDs ("ticket-0") to real IDs, for create mode
     const tempToRealIdMap = new Map<string, string>()
     savedTicketTypes.forEach((t, i) => {
@@ -1292,7 +1683,7 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
     })
 
     const promoCodeIdsInForm = new Set(
-      promoCodes.map((c) => c.id).filter((id): id is string => Boolean(id))
+      promoCodesInput.map((c) => c.id).filter((id): id is string => Boolean(id))
     )
     const idsToDelete = Array.from(persistedPromoCodeIdsRef.current).filter(
       (id) => !promoCodeIdsInForm.has(id)
@@ -1308,10 +1699,10 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
       }
     }
 
-    const nextPromoCodes = [...promoCodes]
+    const nextPromoCodes = [...promoCodesInput]
 
-    for (let index = 0; index < promoCodes.length; index += 1) {
-      const promoCode = promoCodes[index]
+    for (let index = 0; index < promoCodesInput.length; index += 1) {
+      const promoCode = promoCodesInput[index]
       if (!promoCode.code.trim() || !promoCode.discountValue.trim() || !promoCode.ticketTypeId) {
         continue
       }
@@ -1357,6 +1748,11 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
         throw new Error((json?.error as string | undefined) || 'Failed to save promo code')
       }
 
+      nextPromoCodes[index] = {
+        ...nextPromoCodes[index],
+        ticketTypeId: resolvedTicketTypeId,
+      }
+
       if (!isExisting && json?.discountCode?.id) {
         nextPromoCodes[index] = { ...nextPromoCodes[index], id: json.discountCode.id as string }
       }
@@ -1365,7 +1761,34 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
     persistedPromoCodeIdsRef.current = new Set(
       nextPromoCodes.map((c) => c.id).filter((id): id is string => Boolean(id))
     )
-    setPromoCodes(nextPromoCodes)
+    setPromoCodes((current) =>
+      current.map((promoCode, index) => {
+        const savedPromoCode = nextPromoCodes[index]
+        const originalPromoCode = promoCodesInput[index]
+
+        if (!savedPromoCode || !originalPromoCode) {
+          return promoCode
+        }
+
+        const matchesSavedDraft =
+          buildPromoCodeSnapshot(promoCode).code === buildPromoCodeSnapshot(originalPromoCode).code &&
+          buildPromoCodeSnapshot(promoCode).discountValue === buildPromoCodeSnapshot(originalPromoCode).discountValue &&
+          buildPromoCodeSnapshot(promoCode).ticketTypeId === buildPromoCodeSnapshot(originalPromoCode).ticketTypeId &&
+          buildPromoCodeSnapshot(promoCode).maxUses === buildPromoCodeSnapshot(originalPromoCode).maxUses &&
+          buildPromoCodeSnapshot(promoCode).minCartAmount === buildPromoCodeSnapshot(originalPromoCode).minCartAmount
+
+        if (!matchesSavedDraft) {
+          return promoCode
+        }
+
+        return {
+          ...promoCode,
+          id: savedPromoCode.id || promoCode.id,
+          ticketTypeId: savedPromoCode.ticketTypeId || promoCode.ticketTypeId,
+        }
+      })
+    )
+    return nextPromoCodes
   }
 
   function validate(action: 'save' | 'publish') {
@@ -1914,7 +2337,6 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
     setIsSubmitting(true)
 
     try {
-      const safeTimezone = isValidTimeZone(form.timezone) ? form.timezone : 'UTC'
       const startUtc = validationResult.startUtc
       const endUtc = validationResult.endUtc
 
@@ -1922,31 +2344,7 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
         throw new Error('Start and end dates are required')
       }
 
-      const validSpeakerDrafts = speakerDrafts.filter((d) => d.name.trim())
-      const payload = {
-        ...form,
-        timezone: safeTimezone,
-        startDate: startUtc,
-        endDate: endUtc,
-        description: form.description || '',
-        descriptionHtml: undefined,
-        onlineUrl: form.onlineUrl || null,
-        coverImage: form.coverImage || null,
-        bottomImage: form.bottomImage || null,
-        videoUrl: form.videoUrl || null,
-        speakerNames: validSpeakerDrafts.map((d) => d.name.trim()),
-        organizerNames: validSpeakerDrafts.map((d) => d.title),
-        sponsorNames: validSpeakerDrafts.map((d) => d.organization),
-        speakerPhotos: validSpeakerDrafts.map((d) => d.publicUrl),
-        categoryIds: form.categoryIds,
-        ticketTypes: undefined,
-        ticketTypeId: undefined,
-        ticketTypeName: undefined,
-        ticketPrice: undefined,
-        ticketCurrency: undefined,
-        ticketCapacity: undefined,
-        status: undefined,
-      }
+      const payload = buildEventPayload(form, speakerDrafts, startUtc, endUtc)
 
       const endpoint = mode === 'create' ? '/api/events' : `/api/events/${form.id}`
       const method = mode === 'create' ? 'POST' : 'PATCH'
@@ -1971,9 +2369,22 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
       const eventId = eventJson?.data?.id || form.id
       const eventSlug = (eventJson?.data?.slug as string | undefined) || form.slug
 
+      let savedTicketTypes = form.ticketTypes || []
+      let savedPromoCodes = promoCodes
+
       if (eventId) {
-        const savedTicketTypes = await syncTicketTypes(eventId, action)
-        await syncPromoCodes(eventId, savedTicketTypes ?? [])
+        savedTicketTypes = await syncTicketTypes(eventId, action)
+        savedPromoCodes = await syncPromoCodes(eventId, savedTicketTypes ?? [])
+      }
+
+      if (mode === 'edit' && eventId) {
+        const savedSnapshot = buildDraftStateSnapshot(
+          { ...form, id: eventId, ticketTypes: savedTicketTypes },
+          speakerDrafts,
+          savedPromoCodes
+        )
+        persistedSnapshotRef.current = savedSnapshot
+        setPersistedSnapshot(savedSnapshot)
       }
 
       if (action === 'publish' && eventId) {
@@ -2042,12 +2453,7 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
   }
 
   function onCancel() {
-    const isDirty =
-      buildSnapshot(form) !== initialSnapshotRef.current ||
-      Boolean(croppedImageFiles.coverImage) ||
-      Boolean(croppedImageFiles.bottomImage)
-
-    if (isDirty && !window.confirm('Discard unsaved changes?')) {
+    if (hasUnsavedChanges && !window.confirm('Discard unsaved changes?')) {
       return
     }
 
@@ -2087,6 +2493,102 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
       <h2 className="text-3xl font-semibold tracking-tight text-gray-900">
         {mode === 'create' ? 'Create Event Info' : 'Edit Event Info'}
       </h2>
+
+      <section ref={progressTrackerRef} className="rounded-2xl border border-[#d1d5dc] bg-[#f9fafb] p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#5c8bd9]">Progress</p>
+            <h3 className="mt-1 text-xl font-semibold text-gray-900">
+              {activeProgressStep.complete ? 'Ready to publish' : `Current focus: ${activeProgressStep.label}`}
+            </h3>
+            <p className="mt-1 text-sm text-[#4a5565]">{activeProgressStep.description}</p>
+          </div>
+          <div className="md:text-right">
+            <p className="text-sm font-medium text-gray-900">
+              {completedStepCount === progressSteps.length
+                ? 'All sections are ready.'
+                : `${completedStepCount} of ${progressSteps.length} sections complete`}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {progressSteps.map((step) => (
+            <div
+              key={step.label}
+              className={`rounded-2xl border px-4 py-3 ${
+                step.complete
+                  ? 'border-[#b6d2a4] bg-[#eef8e8]'
+                  : activeProgressStep.label === step.label
+                    ? 'border-[#5c8bd9] bg-white'
+                    : 'border-[#d1d5dc] bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                    step.complete
+                      ? 'bg-[#1f7a1f] text-white'
+                      : activeProgressStep.label === step.label
+                        ? 'bg-[#5c8bd9] text-white'
+                        : 'bg-[#e5e7eb] text-[#4a5565]'
+                  }`}
+                >
+                  {step.indicator}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{step.label}</p>
+                  <p className="text-xs text-[#4a5565]">{step.statusText}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div
+        className={`fixed right-3 bottom-3 z-40 transition-all duration-200 ease-out sm:right-4 sm:bottom-4 ${
+          isPrimaryProgressVisible
+            ? 'pointer-events-none translate-y-3 opacity-0'
+            : 'pointer-events-none translate-y-0 opacity-100'
+        }`}
+      >
+        <div
+          className={`w-[min(220px,calc(100vw-1.5rem))] rounded-2xl border px-3 py-2.5 shadow-[0px_8px_18px_rgba(15,23,42,0.12)] backdrop-blur transition-colors ${
+            recentlyCompletedStep
+              ? 'border-[#b6d2a4] bg-[#eef8e8]/95'
+              : 'border-[#d1d5dc] bg-[#f9fafb]/96'
+          }`}
+        >
+          <div className="flex items-start gap-2.5">
+            <span
+              className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                recentlyCompletedStep
+                  ? 'bg-[#1f7a1f] text-white'
+                  : 'bg-[#5c8bd9] text-white'
+              }`}
+            >
+              {recentlyCompletedStep ? '✓' : activeProgressStep.indicator}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#5c8bd9]">Current Step</p>
+              <p className="mt-0.5 truncate text-xs font-semibold text-gray-900">{floatingProgressLabel}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-[#4a5565]">
+                  {stepsRemainingCount === 0
+                    ? '0 left'
+                    : `${stepsRemainingCount} left`}
+                </span>
+                {recentlyCompletedStep ? (
+                  <span className="rounded-full bg-[#d7efc7] px-2 py-0.5 text-[11px] font-semibold text-[#1f5f1f]">
+                    Complete
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {generalErrors.length > 0 ? (
         <div className="sticky top-4 z-10 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -3392,7 +3894,7 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
           <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={() => submit('save')} isLoading={isSubmitting}>
+          <Button onClick={() => submit('save')} isLoading={isSubmitting} disabled={isSubmitting || isAutosaving}>
             Save changes
           </Button>
         </div>
@@ -3409,13 +3911,15 @@ export function EventForm({ mode, initialData, initialSpeakers, categories = [],
           <Button
             onClick={() => submit('save')}
             isLoading={isSubmitting}
+            disabled={isSubmitting || isAutosaving}
             className="h-[50px] w-[152px] rounded-[10px] bg-[#e5e7eb] text-[#4a5565] text-lg font-semibold hover:bg-[#d1d5dc]"
           >
-            Save Draft
+            Save as Draft
           </Button>
           <Button
             onClick={() => submit('publish')}
             isLoading={isSubmitting}
+            disabled={isSubmitting || isAutosaving}
             className="h-[50px] w-[190px] rounded-[10px] bg-[#5c8bd9] text-white text-lg font-semibold shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] hover:bg-[#4a7ac8]"
           >
             Publish Event
