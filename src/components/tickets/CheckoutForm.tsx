@@ -182,8 +182,8 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
   })
   const [paymentMethod, setPaymentMethod] = useState<'PAYPAL' | 'INVOICE'>('PAYPAL')
 
-  // Track the last buyer values synced to first attendee, to detect manual edits
-  const lastSyncedBuyerRef = useRef<Partial<AttendeeFormState>>({})
+  // Track which ticket types have had their first attendee pre-filled
+  const prefilledTypesRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     async function fetchTicketTypes() {
@@ -327,7 +327,7 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
   }, [selectedItems])
 
   // Pre-fill first attendee slot of the first ticket type with buyer info
-  // Only pre-fill when all required buyer fields are complete
+  // Only pre-fill ONCE when buyer info is complete and attendee slot exists
   useEffect(() => {
     if (selectedItems.length === 0) return
 
@@ -336,44 +336,33 @@ export function CheckoutForm({ event }: CheckoutFormProps) {
 
     const firstTypeId = selectedItems[0].ticketTypeId
 
+    // Only pre-fill once per ticket type
+    if (prefilledTypesRef.current.has(firstTypeId)) return
+
     setAttendeesByType((current) => {
       const slots = current[firstTypeId]
       if (!slots || slots.length === 0) return current
 
       const first = slots[0]
-      const lastSynced = lastSyncedBuyerRef.current
 
-      // For each field, check if it's empty or matches last synced value (not manually edited)
-      const shouldUpdateFirst = first.firstName === '' || first.firstName === lastSynced.firstName
-      const shouldUpdateLast = first.lastName === '' || first.lastName === lastSynced.lastName
-      const shouldUpdateEmail = first.email === '' || first.email === lastSynced.email
-      const shouldUpdateTitle = first.title === '' || first.title === lastSynced.title
-      const shouldUpdateOrg = first.organization === '' || first.organization === lastSynced.organization
-
-      // If no fields should update, skip
-      if (!shouldUpdateFirst && !shouldUpdateLast && !shouldUpdateEmail && !shouldUpdateTitle && !shouldUpdateOrg) {
+      // Only pre-fill if the slot is empty
+      if (first.firstName || first.lastName || first.email) {
         return current
       }
 
-      // Update ref with new synced values
-      lastSyncedBuyerRef.current = {
-        firstName: buyer.firstName,
-        lastName: buyer.lastName,
-        email: buyer.email,
-        title: buyer.title,
-        organization: buyer.organization,
-      }
+      // Mark as pre-filled
+      prefilledTypesRef.current.add(firstTypeId)
 
       return {
         ...current,
         [firstTypeId]: [
           {
             ...first,
-            firstName: shouldUpdateFirst ? buyer.firstName : first.firstName,
-            lastName: shouldUpdateLast ? buyer.lastName : first.lastName,
-            email: shouldUpdateEmail ? buyer.email : first.email,
-            title: shouldUpdateTitle ? buyer.title : first.title,
-            organization: shouldUpdateOrg ? buyer.organization : first.organization,
+            firstName: buyer.firstName,
+            lastName: buyer.lastName,
+            email: buyer.email,
+            title: buyer.title,
+            organization: buyer.organization,
           },
           ...slots.slice(1),
         ],
