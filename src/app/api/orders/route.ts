@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
         const order = await tx.order.create({
           data: {
             orderNumber: generateOrderNumber(),
-            userId: user?.id ?? null, // Associate with user if logged in, otherwise null
+            userId: user?.id, // Associate with user if logged in
             eventId: input.eventId,
             discountCodeId: discountCodeRecord?.id,
             buyerFirstName: input.buyer.firstName,
