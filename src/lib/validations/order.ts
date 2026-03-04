@@ -31,6 +31,7 @@ export const createOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1, 'At least one ticket is required'),
   buyer: buyerInfoSchema,
   discountCode: z.string().optional(),
+  groupDiscountId: z.string().cuid().optional(),
 })
 
 export const cancelOrderSchema = z.object({

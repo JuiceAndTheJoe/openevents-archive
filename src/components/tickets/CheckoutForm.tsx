@@ -70,13 +70,14 @@ function emptyAttendee(): AttendeeFormState {
 function calculateBestGroupDiscount(
   selectedItems: SummaryLineItem[],
   groupDiscounts: GroupDiscount[]
-): { amount: number; description: string | null } {
+): { amount: number; description: string | null; id: string | null } {
   if (!groupDiscounts || groupDiscounts.length === 0) {
-    return { amount: 0, description: null }
+    return { amount: 0, description: null, id: null }
   }
 
   let bestDiscount = 0
   let bestDescription: string | null = null
+  let bestId: string | null = null
 
   // Calculate total quantity across all ticket types
   const totalQuantity = selectedItems.reduce((sum, item) => sum + item.quantity, 0)
@@ -99,6 +100,7 @@ function calculateBestGroupDiscount(
 
     if (discountAmount > bestDiscount) {
       bestDiscount = discountAmount
+      bestId = topGlobalDiscount.id
       bestDescription = `Buy ${topGlobalDiscount.minQuantity}+ tickets, get ${
         topGlobalDiscount.discountType === 'PERCENTAGE'
           ? `${topGlobalDiscount.discountValue}%`
@@ -125,6 +127,7 @@ function calculateBestGroupDiscount(
 
       if (discountAmount > bestDiscount) {
         bestDiscount = discountAmount
+        bestId = topTicketDiscount.id
         bestDescription = `Buy ${topTicketDiscount.minQuantity}+ ${item.name} tickets, get ${
           topTicketDiscount.discountType === 'PERCENTAGE'
             ? `${topTicketDiscount.discountValue}%`
@@ -137,6 +140,7 @@ function calculateBestGroupDiscount(
   return {
     amount: Number(Math.min(bestDiscount, selectedItems.reduce((sum, item) => sum + item.totalPrice, 0)).toFixed(2)),
     description: bestDescription,
+    id: bestId,
   }
 }
 
@@ -633,7 +637,9 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
             ...buyer,
             email: buyerEmailValue,
           },
+          // Send both - backend will determine best discount
           discountCode: discount?.code,
+          groupDiscountId: groupDiscount.id || undefined,
         }),
       })
 

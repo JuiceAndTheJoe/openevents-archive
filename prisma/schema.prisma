@@ -450,6 +450,7 @@ model GroupDiscount {
 
   event       Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   ticketType  TicketType? @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+  orders      Order[]
 
   @@index([eventId])
   @@map("group_discounts")
@@ -465,6 +466,7 @@ model Order {
   userId          String?
   eventId         String
   discountCodeId  String?
+  groupDiscountId String?
 
   // Buyer Information
   buyerFirstName  String
@@ -501,9 +503,10 @@ model Order {
   refundReason    String?      @db.Text
   refundNotes     String?      @db.Text
 
-  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  event         Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  discountCode  DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  discountCode  DiscountCode?  @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
+  groupDiscount GroupDiscount? @relation(fields: [groupDiscountId], references: [id], onDelete: SetNull)
   items         OrderItem[]
   tickets       Ticket[]
 

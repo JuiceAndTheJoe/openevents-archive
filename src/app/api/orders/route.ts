@@ -25,6 +25,47 @@ type DiscountCodeWithLinks = Prisma.DiscountCodeGetPayload<{
   include: { ticketTypes: true }
 }>
 
+type GroupDiscountRecord = {
+  id: string
+  ticketTypeId: string | null
+  minQuantity: number
+  discountType: string
+  discountValue: Prisma.Decimal
+  isActive: boolean
+}
+
+function calculateGroupDiscountAmount(
+  groupDiscount: GroupDiscountRecord,
+  items: { ticketTypeId: string; quantity: number; totalPrice: number }[]
+): number {
+  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0)
+  const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0)
+
+  // Check if discount applies
+  if (groupDiscount.ticketTypeId === null) {
+    // Global discount - check total quantity
+    if (totalQuantity < groupDiscount.minQuantity) return 0
+
+    const value = decimalToNumber(groupDiscount.discountValue)
+    if (groupDiscount.discountType === 'PERCENTAGE') {
+      return Number(Math.min(subtotal, (subtotal * value) / 100).toFixed(2))
+    } else {
+      return Number(Math.min(subtotal, value).toFixed(2))
+    }
+  } else {
+    // Ticket-specific discount
+    const applicableItem = items.find(item => item.ticketTypeId === groupDiscount.ticketTypeId)
+    if (!applicableItem || applicableItem.quantity < groupDiscount.minQuantity) return 0
+
+    const value = decimalToNumber(groupDiscount.discountValue)
+    if (groupDiscount.discountType === 'PERCENTAGE') {
+      return Number(Math.min(applicableItem.totalPrice, (applicableItem.totalPrice * value) / 100).toFixed(2))
+    } else {
+      return Number(Math.min(applicableItem.totalPrice, value).toFixed(2))
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const reservationTtlMinutes = getOrderReservationTtlMinutes(
@@ -172,6 +213,7 @@ export async function POST(request: NextRequest) {
         let discountCodeRecord: DiscountCodeWithLinks | null = null
         let discountUsageUnits = 0
         let discountApplicableTicketTypeIds: string[] = []
+        let promoCodeDiscountAmount = 0
 
         if (input.discountCode) {
           discountCodeRecord = await tx.discountCode.findUnique({
@@ -224,14 +266,8 @@ export async function POST(request: NextRequest) {
               throw new Error('Discount code has no remaining uses for this quantity of tickets.')
             }
           }
-        }
 
-        const subtotal = preparedOrder.subtotal
-        let discountAmount = 0
-
-        if (discountCodeRecord) {
-          const appliesToAll = discountApplicableTicketTypeIds.length === 0
-
+          // Calculate promo code discount amount
           const discountableSubtotal = preparedOrder.items.reduce((sum, item) => {
             if (appliesToAll || discountApplicableTicketTypeIds.includes(item.ticketTypeId)) {
               return Number((sum + item.totalPrice).toFixed(2))
@@ -254,11 +290,53 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          discountAmount = calculateDiscountAmount(
+          promoCodeDiscountAmount = calculateDiscountAmount(
             discountableSubtotal,
             discountCodeRecord.discountType,
             decimalToNumber(discountCodeRecord.discountValue)
           )
+        }
+
+        // Fetch and validate group discount if provided
+        let groupDiscountRecord: GroupDiscountRecord | null = null
+        let groupDiscountAmount = 0
+
+        if (input.groupDiscountId) {
+          const gd = await tx.groupDiscount.findUnique({
+            where: { id: input.groupDiscountId },
+            select: {
+              id: true,
+              eventId: true,
+              ticketTypeId: true,
+              minQuantity: true,
+              discountType: true,
+              discountValue: true,
+              isActive: true,
+            },
+          })
+
+          if (gd && gd.eventId === input.eventId && gd.isActive) {
+            groupDiscountRecord = gd
+            groupDiscountAmount = calculateGroupDiscountAmount(gd, preparedOrder.items)
+          }
+        }
+
+        // Apply the best discount: whichever saves the customer more
+        const subtotal = preparedOrder.subtotal
+        let discountAmount = 0
+        let appliedGroupDiscountId: string | null = null
+        let appliedDiscountCodeId: string | null = null
+
+        if (groupDiscountAmount > promoCodeDiscountAmount) {
+          // Group discount wins
+          discountAmount = groupDiscountAmount
+          appliedGroupDiscountId = groupDiscountRecord?.id ?? null
+          // Don't claim promo code usage since we're not using it
+          discountUsageUnits = 0
+        } else if (promoCodeDiscountAmount > 0) {
+          // Promo code wins (or tie goes to promo code)
+          discountAmount = promoCodeDiscountAmount
+          appliedDiscountCodeId = discountCodeRecord?.id ?? null
         }
 
         const totalAmount = Number(Math.max(0, subtotal - discountAmount).toFixed(2))
@@ -282,7 +360,8 @@ export async function POST(request: NextRequest) {
             orderNumber: generateOrderNumber(),
             userId: user?.id, // Associate with user if logged in
             eventId: input.eventId,
-            discountCodeId: discountCodeRecord?.id,
+            discountCodeId: appliedDiscountCodeId,
+            groupDiscountId: appliedGroupDiscountId,
             buyerFirstName: input.buyer.firstName,
             buyerLastName: input.buyer.lastName,
             buyerTitle: input.buyer.title,
@@ -363,7 +442,8 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (discountCodeRecord) {
+        // Only claim discount code usage if the promo code was actually applied (not when group discount won)
+        if (discountCodeRecord && appliedDiscountCodeId && discountUsageUnits > 0) {
           const usageClaimed = await claimDiscountCodeUsage(
             tx,
             discountCodeRecord.id,
