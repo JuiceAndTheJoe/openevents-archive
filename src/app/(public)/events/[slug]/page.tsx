@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Calendar, Heart, MapPin, Pencil } from 'lucide-react'
+import { Calendar, ExternalLink, Globe, MapPin, Pencil } from 'lucide-react'
 import { getCurrentUser, hasRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { EventNoticeToast } from '@/components/events/EventNoticeToast'
@@ -38,6 +38,7 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
           orgName: true,
           description: true,
           website: true,
+          socialLinks: true,
         },
       },
       ticketTypes: {
@@ -115,7 +116,12 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
         : notice === CHECKOUT_UNAVAILABLE_NOTICE.NO_PURCHASABLE_TICKETS
           ? 'Checkout is unavailable because there are no tickets currently on sale.'
           : null
-  type PersonCard = { id: string; name: string; title: string | null; photo: string | null; organization: string | null }
+
+  // Get organizer website from either website field or socialLinks
+  const organizerWebsite = event.organizer.website ||
+    (isRecord(event.organizer.socialLinks) ? (event.organizer.socialLinks.website as string | null) : null)
+
+  type PersonCard = { id: string; name: string; title: string | null; photo: string | null; organization: string | null; link: string | null }
   const speakers: PersonCard[] = event.speakers.map((person) => ({
     id: person.id,
     name: person.name,
@@ -124,6 +130,10 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
     organization:
       isRecord(person.socialLinks) && person.socialLinks.__kind === 'EVENT_PEOPLE'
         ? (person.socialLinks.organization as string | null) || null
+        : null,
+    link:
+      isRecord(person.socialLinks)
+        ? (person.socialLinks.link as string | null) || null
         : null,
   }))
 
@@ -149,13 +159,6 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
         ) : (
           <div className="h-[220px] bg-gradient-to-r from-slate-700 to-slate-900 sm:h-[300px] lg:h-[390px]" />
         )}
-        <button
-          type="button"
-          className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] transition hover:opacity-80"
-          aria-label="Add to favourites"
-        >
-          <Heart className="h-6 w-6 text-gray-400" />
-        </button>
       </section>
 
       <section className="border-b border-[#bfbfbf] pb-8">
@@ -169,12 +172,25 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
             >
               {event.title}
             </h1>
-            <p
-              className="text-[20px] text-black"
-              style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
-            >
-              By <span className="font-semibold">{event.organizer.orgName}</span>
-            </p>
+            <div className="flex items-center gap-2">
+              <p
+                className="text-[20px] text-black"
+                style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
+              >
+                By <span className="font-semibold">{event.organizer.orgName}</span>
+              </p>
+              {organizerWebsite && (
+                <a
+                  href={organizerWebsite}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#5c8bd9] transition hover:text-[#4a7ac8]"
+                  aria-label="Visit organizer website"
+                >
+                  <Globe className="h-5 w-5" />
+                </a>
+              )}
+            </div>
             <div className="flex flex-col gap-[12px]">
               {event.locationType !== 'ONLINE' ? (
                 <div className="flex items-start gap-[16px]">
@@ -364,13 +380,26 @@ export default async function EventDetailsPage({ params, searchParams }: PagePro
                   )}
                 </div>
                 {/* Info */}
-                <div className="flex flex-col">
-                  <span
-                    className="text-[18px] font-semibold leading-[28px] text-black"
-                    style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
-                  >
-                    {person.name}
-                  </span>
+                <div className="flex flex-1 flex-col">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="text-[18px] font-semibold leading-[28px] text-black"
+                      style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
+                    >
+                      {person.name}
+                    </span>
+                    {person.link && (
+                      <a
+                        href={person.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#5c8bd9] transition hover:text-[#4a7ac8]"
+                        aria-label={`Visit ${person.name}'s website`}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
+                  </div>
                   {person.title && (
                     <span
                       className="text-[16px] font-normal leading-[24px] text-[#364153]"
