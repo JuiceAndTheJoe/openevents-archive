@@ -79,7 +79,7 @@ export const eventMediaSchema = z.object({
   sortOrder: z.number().default(0),
 })
 
-export const groupDiscountSchema = z.object({
+const groupDiscountBaseSchema = z.object({
   ticketTypeId: z.string().cuid().optional().nullable(),
   minQuantity: z.number().min(1, 'Minimum quantity must be at least 1'),
   discountType: z.enum(['PERCENTAGE', 'FIXED']).default('PERCENTAGE'),
@@ -87,8 +87,20 @@ export const groupDiscountSchema = z.object({
     message: 'Discount value must be greater than 0',
   }),
   isActive: z.boolean().default(true),
-}).refine((data) => {
+})
+
+export const groupDiscountSchema = groupDiscountBaseSchema.refine((data) => {
   if (data.discountType === 'PERCENTAGE') {
+    return data.discountValue <= 100
+  }
+  return true
+}, {
+  message: 'Percentage discount cannot exceed 100%',
+  path: ['discountValue'],
+})
+
+export const updateGroupDiscountSchema = groupDiscountBaseSchema.partial().refine((data) => {
+  if (data.discountType === 'PERCENTAGE' && data.discountValue !== undefined) {
     return data.discountValue <= 100
   }
   return true
@@ -103,3 +115,4 @@ export type AgendaItemInput = z.infer<typeof agendaItemSchema>
 export type SpeakerInput = z.infer<typeof speakerSchema>
 export type EventMediaInput = z.infer<typeof eventMediaSchema>
 export type GroupDiscountInput = z.infer<typeof groupDiscountSchema>
+export type UpdateGroupDiscountInput = z.infer<typeof updateGroupDiscountSchema>

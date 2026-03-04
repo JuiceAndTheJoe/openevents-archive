@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireAuth } from '@/lib/auth'
 import { requireEventOrganizer } from '@/lib/auth/permissions'
-import { groupDiscountSchema } from '@/lib/validations/event'
+import { updateGroupDiscountSchema } from '@/lib/validations/event'
 
 interface RouteContext {
   params: Promise<{ id: string; discountId: string }>
@@ -16,7 +16,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     await requireEventOrganizer(eventId, user.id)
 
     const body = await request.json()
-    const parsed = groupDiscountSchema.partial().safeParse(body)
+    const parsed = updateGroupDiscountSchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(
