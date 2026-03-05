@@ -144,6 +144,11 @@ function calculateBestGroupDiscount(
   }
 }
 
+type AutoFillBuyerSnapshot = Pick<
+  AttendeeFormState,
+  'firstName' | 'lastName' | 'email' | 'title' | 'organization'
+>
+
 function calculateDiscountAmount(
   subtotal: number,
   discount: AppliedDiscount | null,
@@ -242,6 +247,13 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
 
   // Map of ticketTypeId -> AttendeeFormState[]
   const [attendeesByType, setAttendeesByType] = useState<Record<string, AttendeeFormState[]>>({})
+  const lastAutoFilledBuyerRef = useRef<AutoFillBuyerSnapshot>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    title: '',
+    organization: '',
+  })
 
   const wasCancelled = searchParams.get('cancelled') === 'true'
   const wasExpired = searchParams.get('expired') === 'true'
@@ -267,9 +279,6 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
     country: '',
   })
   const [paymentMethod, setPaymentMethod] = useState<'PAYPAL' | 'INVOICE'>('PAYPAL')
-
-  // Track which ticket types have had their first attendee pre-filled
-  const prefilledTypesRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     async function fetchTicketTypes() {
@@ -430,43 +439,62 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
   }, [selectedItems])
 
   // Pre-fill first attendee slot of the first ticket type with buyer info
-  // Only pre-fill ONCE when buyer info is complete and attendee slot exists
+  // and keep syncing fields that remain auto-filled.
   useEffect(() => {
-    if (selectedItems.length === 0) return
+    const buyerSnapshot: AutoFillBuyerSnapshot = {
+      firstName: buyer.firstName,
+      lastName: buyer.lastName,
+      email: buyer.email,
+      title: buyer.title,
+      organization: buyer.organization,
+    }
 
-    // Don't pre-fill until buyer has entered all required fields
-    if (!buyer.firstName || !buyer.lastName || !buyer.email) return
+    if (selectedItems.length === 0) {
+      lastAutoFilledBuyerRef.current = buyerSnapshot
+      return
+    }
 
     const firstTypeId = selectedItems[0].ticketTypeId
 
-    // Only pre-fill once per ticket type
-    if (prefilledTypesRef.current.has(firstTypeId)) return
-
     setAttendeesByType((current) => {
       const slots = current[firstTypeId]
-      if (!slots || slots.length === 0) return current
-
-      const first = slots[0]
-
-      // Only pre-fill if the slot is empty
-      if (first.firstName || first.lastName || first.email) {
+      if (!slots || slots.length === 0) {
+        lastAutoFilledBuyerRef.current = buyerSnapshot
         return current
       }
 
-      // Mark as pre-filled
-      prefilledTypesRef.current.add(firstTypeId)
+      const first = slots[0]
+      const lastAutoFilledBuyer = lastAutoFilledBuyerRef.current
+      const nextFirst = { ...first }
+      let changed = false
+
+      const fields: Array<keyof AutoFillBuyerSnapshot> = [
+        'firstName',
+        'lastName',
+        'email',
+        'title',
+        'organization',
+      ]
+
+      for (const field of fields) {
+        const currentValue = first[field]
+        const wasAutoFilledOrEmpty =
+          currentValue === '' || currentValue === lastAutoFilledBuyer[field]
+
+        if (!wasAutoFilledOrEmpty) continue
+        if (currentValue === buyerSnapshot[field]) continue
+
+        nextFirst[field] = buyerSnapshot[field]
+        changed = true
+      }
+
+      lastAutoFilledBuyerRef.current = buyerSnapshot
+      if (!changed) return current
 
       return {
         ...current,
         [firstTypeId]: [
-          {
-            ...first,
-            firstName: buyer.firstName,
-            lastName: buyer.lastName,
-            email: buyer.email,
-            title: buyer.title,
-            organization: buyer.organization,
-          },
+          nextFirst,
           ...slots.slice(1),
         ],
       }
