@@ -10,18 +10,18 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "agent:github": "npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/github-agent.ts",
-    "test:currencies": "npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/check-currencies.ts",
+    "agent:github": "npx ts-node --project tsconfig.scripts.json scripts/github-agent.ts",
+    "test:currencies": "npx ts-node --project tsconfig.scripts.json scripts/check-currencies.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
-    "db:seed": "npx ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
+    "db:seed": "npx ts-node --project tsconfig.scripts.json prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset"
   },
   "prisma": {
-    "seed": "npx ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+    "seed": "npx ts-node --project tsconfig.scripts.json prisma/seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.63",

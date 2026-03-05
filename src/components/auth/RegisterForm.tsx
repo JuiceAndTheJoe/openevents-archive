@@ -5,12 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock } from 'lucide-react'
 import { registerSchema, type RegisterInput } from '@/lib/validations/auth'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 
 function PasswordStrengthIndicator({ password }: { password: string }) {
   const getStrength = (pass: string): { score: number; label: string; color: string } => {
@@ -109,192 +105,212 @@ export function RegisterForm() {
 
   if (success) {
     return (
-      <Card>
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center text-green-600">Check your email</CardTitle>
-          <CardDescription className="text-center">
-            We&apos;ve sent you a verification link
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <p className="text-gray-600">
-              Please check your email inbox and click on the verification link to activate your account.
-            </p>
-            <p className="text-sm text-gray-500">
-              The link will expire in 24 hours.
-            </p>
+      <div className="bg-white rounded-3xl shadow-[0px_10px_30px_0px_rgba(0,0,0,0.12)] px-12 py-12">
+        <div className="text-center space-y-4">
+          <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
           </div>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <Button
-            variant="outline"
-            className="w-full"
+          <h2 className="text-2xl font-bold text-green-600">Check your email</h2>
+          <p className="text-[#4a5565]">
+            Please check your email inbox and click on the verification link to activate your account.
+          </p>
+          <p className="text-sm text-[#828283]">The link will expire in 24 hours.</p>
+          <button
             onClick={() => router.push('/login')}
+            className="w-full h-[52px] rounded-[10px] border border-[#d1d5dc] bg-white text-base font-semibold text-[#4a5565] hover:bg-[#f2f2f4] transition-colors"
           >
-            Go to Login
-          </Button>
-          <p className="text-sm text-center text-gray-500">
+            Go to Log in
+          </button>
+          <p className="text-sm text-[#4a5565]">
             Didn&apos;t receive the email?{' '}
-            <Link href="/verify-email" className="text-blue-600 hover:underline">
+            <Link href="/verify-email" className="text-[#5c8bd9] hover:underline">
               Resend verification
             </Link>
           </p>
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   return (
-    <Card className="rounded-[1.75rem] border border-gray-300 shadow-xl">
-      <CardHeader className="space-y-2 pt-9">
-        <CardTitle className="text-3xl text-center font-semibold tracking-tight">Create your account</CardTitle>
-        <CardDescription className="text-center text-base">
-          Create an account to discover and join events.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Error Message */}
-        {error && (
-          <div className="p-3 rounded-md bg-red-50 text-red-700 text-sm border border-red-200">
-            {error}
-          </div>
-        )}
+    <div className="bg-white rounded-3xl shadow-[0px_10px_30px_0px_rgba(0,0,0,0.12)] px-12 pt-12 pb-12">
+      {/* Header */}
+      <div className="mb-8 text-center">
+        <h1 className="text-4xl font-bold text-black">Create your account</h1>
+        <p className="mt-2 text-lg text-[#4a5565]">Join OpenEvents to discover and attend amazing events</p>
+      </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName" required>First Name</Label>
-              <Input
-                id="firstName"
-                placeholder="John"
-                autoComplete="given-name"
-                disabled={isLoading}
-                error={errors.firstName?.message}
-                required
-                {...register('firstName')}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName" required>Last Name</Label>
-              <Input
-                id="lastName"
-                placeholder="Doe"
-                autoComplete="family-name"
-                disabled={isLoading}
-                error={errors.lastName?.message}
-                required
-                {...register('lastName')}
-              />
-            </div>
-          </div>
+      {/* Error */}
+      {error && (
+        <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200">
+          {error}
+        </div>
+      )}
 
-          <div className="space-y-2">
-            <Label htmlFor="email" required>Email</Label>
-            <Input
-              id="email"
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
+        {/* First / Last name */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-base font-semibold text-black">First name</label>
+            <input
+              placeholder="John"
+              autoComplete="given-name"
+              disabled={isLoading}
+              className="h-12 w-full rounded-[10px] bg-[#f2f2f4] px-5 text-base placeholder:text-[#828283] focus:outline-none focus:ring-2 focus:ring-[#5c8bd9] disabled:opacity-50"
+              {...register('firstName')}
+            />
+            {errors.firstName && (
+              <p className="text-sm text-red-600">{errors.firstName.message}</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-base font-semibold text-black">Last name</label>
+            <input
+              placeholder="Doe"
+              autoComplete="family-name"
+              disabled={isLoading}
+              className="h-12 w-full rounded-[10px] bg-[#f2f2f4] px-5 text-base placeholder:text-[#828283] focus:outline-none focus:ring-2 focus:ring-[#5c8bd9] disabled:opacity-50"
+              {...register('lastName')}
+            />
+            {errors.lastName && (
+              <p className="text-sm text-red-600">{errors.lastName.message}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Email */}
+        <div className="flex flex-col gap-2">
+          <label className="text-base font-semibold text-black">Email address</label>
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#828283] pointer-events-none" />
+            <input
               type="email"
-              placeholder="name@example.com"
+              placeholder="your@email.com"
               autoComplete="email"
               disabled={isLoading}
-              error={errors.email?.message}
-              required
+              className="h-12 w-full rounded-[10px] bg-[#f2f2f4] pl-12 pr-4 text-base placeholder:text-[#828283] focus:outline-none focus:ring-2 focus:ring-[#5c8bd9] disabled:opacity-50"
               {...register('email')}
             />
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password" required>Password</Label>
-            <div className="relative">
-              <Input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                disabled={isLoading}
-                error={errors.password?.message}
-                required
-                className="pr-10"
-                {...register('password')}
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-5 -translate-y-1/2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-                onClick={() => setShowPassword((value) => !value)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                disabled={isLoading}
-              >
-                {showPassword ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              </button>
-            </div>
-            <PasswordStrengthIndicator password={password} />
-            <p className="text-xs text-gray-500">
-              Must be at least 8 characters with uppercase, lowercase, and numbers
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword" required>Confirm Password</Label>
-            <div className="relative">
-              <Input
-                id="confirmPassword"
-                type={showConfirmPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                disabled={isLoading}
-                error={errors.confirmPassword?.message}
-                required
-                className="pr-10"
-                {...register('confirmPassword')}
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-5 -translate-y-1/2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-                onClick={() => setShowConfirmPassword((value) => !value)}
-                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-                disabled={isLoading}
-              >
-                {showConfirmPassword ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-start space-x-2">
-            <input
-              type="checkbox"
-              id="terms"
-              checked={acceptedTerms}
-              onChange={(e) => setAcceptedTerms(e.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <label htmlFor="terms" className="text-sm text-gray-600">
-              I agree to the <span className="text-red-500">*</span>{' '}
-              <Link href="/terms" className="text-blue-600 hover:underline">
-                Terms of Service
-              </Link>{' '}
-              and{' '}
-              <Link href="/privacy" className="text-blue-600 hover:underline">
-                Privacy Policy
-              </Link>
-            </label>
-          </div>
-
-          <Button type="submit" className="w-full" isLoading={isLoading}>
-            Create account
-          </Button>
-        </form>
-      </CardContent>
-      <CardFooter className="flex flex-col space-y-4">
-        <div className="text-sm text-center text-gray-500">
-          Already have an account?{' '}
-          <Link href="/login" className="text-blue-600 hover:underline">
-            Sign in
-          </Link>
+          {errors.email && (
+            <p className="text-sm text-red-600">{errors.email.message}</p>
+          )}
         </div>
-      </CardFooter>
-    </Card>
+
+        {/* Password */}
+        <div className="flex flex-col gap-2">
+          <label className="text-base font-semibold text-black">Password</label>
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#828283] pointer-events-none" />
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Create a password"
+              autoComplete="new-password"
+              disabled={isLoading}
+              className="h-12 w-full rounded-[10px] bg-[#f2f2f4] pl-12 pr-12 text-base placeholder:text-[#828283] focus:outline-none focus:ring-2 focus:ring-[#5c8bd9] disabled:opacity-50"
+              {...register('password')}
+            />
+            <button
+              type="button"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#828283] hover:text-gray-700 disabled:opacity-50"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              disabled={isLoading}
+            >
+              {showPassword ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+            </button>
+          </div>
+          <PasswordStrengthIndicator password={password} />
+          <p className="text-xs text-[#828283]">
+            Must be at least 8 characters with uppercase, lowercase, and numbers
+          </p>
+          {errors.password && (
+            <p className="text-sm text-red-600">{errors.password.message}</p>
+          )}
+        </div>
+
+        {/* Confirm password */}
+        <div className="flex flex-col gap-2">
+          <label className="text-base font-semibold text-black">Confirm password</label>
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#828283] pointer-events-none" />
+            <input
+              type={showConfirmPassword ? 'text' : 'password'}
+              placeholder="Confirm your password"
+              autoComplete="new-password"
+              disabled={isLoading}
+              className="h-12 w-full rounded-[10px] bg-[#f2f2f4] pl-12 pr-12 text-base placeholder:text-[#828283] focus:outline-none focus:ring-2 focus:ring-[#5c8bd9] disabled:opacity-50"
+              {...register('confirmPassword')}
+            />
+            <button
+              type="button"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#828283] hover:text-gray-700 disabled:opacity-50"
+              onClick={() => setShowConfirmPassword((v) => !v)}
+              aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+              disabled={isLoading}
+            >
+              {showConfirmPassword ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+            </button>
+          </div>
+          {errors.confirmPassword && (
+            <p className="text-sm text-red-600">{errors.confirmPassword.message}</p>
+          )}
+        </div>
+
+        {/* Terms */}
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={acceptedTerms}
+            onChange={(e) => setAcceptedTerms(e.target.checked)}
+            className="h-[18px] w-[18px] cursor-pointer rounded accent-[#5c8bd9]"
+          />
+          <span className="text-sm font-medium text-[#4a5565]">
+            I agree to the{' '}
+            <Link href="/terms" className="text-[#5c8bd9] hover:underline">
+              Terms and Conditions
+            </Link>
+            {' '}and{' '}
+            <Link href="/privacy" className="text-[#5c8bd9] hover:underline">
+              Privacy Policy
+            </Link>
+          </span>
+        </label>
+
+        {/* Submit */}
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="flex h-[52px] w-full items-center justify-center rounded-[10px] bg-[#5c8bd9] text-lg font-semibold text-white shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#4a7ac8] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isLoading ? (
+            <svg
+              className="h-5 w-5 animate-spin"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            'Create account'
+          )}
+        </button>
+
+        {/* Divider */}
+        <div className="border-t border-[#d1d5dc]" />
+
+        {/* Log in link */}
+        <p className="text-center text-base text-[#4a5565]">
+          Already have an account?{' '}
+          <Link href="/login" className="font-semibold text-[#5c8bd9] hover:underline">
+            Log in
+          </Link>
+        </p>
+      </form>
+    </div>
   )
 }
