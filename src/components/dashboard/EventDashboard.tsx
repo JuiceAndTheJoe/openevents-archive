@@ -1,4 +1,5 @@
 import { EventStatus } from '@prisma/client'
+import { ChevronDown } from 'lucide-react'
 import { EventActionButtons } from '@/components/dashboard/EventActionButtons'
 import { EventStatusBadge } from '@/components/dashboard/EventStatusBadge'
 import { SalesTrendChart } from '@/components/dashboard/SalesTrendChart'
@@ -35,6 +36,13 @@ type EventDashboardProps = {
 }
 
 export function EventDashboard({ event, stats }: EventDashboardProps) {
+  const orderBreakdown = [
+    { label: 'Paid', value: stats.paidOrders },
+    { label: 'Pending Invoice', value: stats.pendingInvoiceOrders },
+    { label: 'Cancelled', value: stats.cancelledOrders },
+    { label: 'Refunded', value: stats.refundedOrders },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Event header */}
@@ -57,26 +65,40 @@ export function EventDashboard({ event, stats }: EventDashboardProps) {
         </div>
       </section>
 
-      {/* 4 stat cards: 2-col on mobile, 4-col on md+ */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
+      {/* Core metrics */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="h-full rounded-xl border border-gray-200 bg-white p-5">
           <p className="text-sm text-gray-500">Revenue</p>
           <p className="mt-2 text-2xl font-semibold text-gray-900">
             {formatCurrency(stats.totalRevenue)}
           </p>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="h-full rounded-xl border border-gray-200 bg-white p-5">
           <p className="text-sm text-gray-500">Tickets Sold</p>
           <p className="mt-2 text-2xl font-semibold text-gray-900">{stats.totalTicketsSold}</p>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="h-full rounded-xl border border-gray-200 bg-white p-5">
           <p className="text-sm text-gray-500">Orders</p>
           <p className="mt-2 text-2xl font-semibold text-gray-900">{stats.totalOrders}</p>
+          <details className="group mt-3">
+            <summary className="flex cursor-pointer list-none items-center justify-between rounded-md border border-gray-100 bg-gray-50 px-2.5 py-2 text-xs font-medium text-gray-600 [&::-webkit-details-marker]:hidden">
+              Order breakdown
+              <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {orderBreakdown.map(({ label, value }) => (
+                <div key={label} className="rounded-md border border-gray-100 bg-gray-50 px-2 py-1.5 text-center">
+                  <p className="text-sm font-semibold leading-none text-gray-900">{value}</p>
+                  <p className="mt-1 text-[11px] leading-tight text-gray-500">{label}</p>
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="h-full rounded-xl border border-gray-200 bg-white p-5">
           <p className="text-sm text-gray-500">Refund Rate</p>
           <p className="mt-2 text-2xl font-semibold text-gray-900">
             {stats.totalOrders === 0 ? '—' : `${Number.isNaN(stats.refundRate) ? 0 : stats.refundRate}%`}
@@ -128,24 +150,6 @@ export function EventDashboard({ event, stats }: EventDashboardProps) {
           </div>
         </section>
       )}
-
-      {/* Order breakdown */}
-      <section className="rounded-xl border border-gray-200 bg-white p-6">
-        <h3 className="text-lg font-semibold text-gray-900">Order Breakdown</h3>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { label: 'Paid', value: stats.paidOrders },
-            { label: 'Pending Invoice', value: stats.pendingInvoiceOrders },
-            { label: 'Cancelled', value: stats.cancelledOrders },
-            { label: 'Refunded', value: stats.refundedOrders },
-          ].map(({ label, value }) => (
-            <div key={label} className="rounded-lg bg-gray-50 p-4 text-center">
-              <p className="text-2xl font-semibold text-gray-900">{value}</p>
-              <p className="mt-1 text-xs text-gray-500">{label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   )
 }
