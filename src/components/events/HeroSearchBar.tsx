@@ -5,16 +5,35 @@ import { useRouter } from 'next/navigation'
 
 type Category = { id: string; name: string; slug: string }
 
-export function HeroSearchBar({ categories }: { categories: Category[] }) {
+type HeroSearchBarProps = {
+  categories: Category[]
+  initial?: {
+    search?: string
+    dateFrom?: string
+    dateTo?: string
+    location?: string
+    category?: string
+  }
+}
+
+export function HeroSearchBar({ categories, initial }: HeroSearchBarProps) {
   const router = useRouter()
 
-  const [search, setSearch] = useState('')
-  const [dateFrom, setDateFrom] = useState<Date | null>(null)
-  const [dateTo, setDateTo] = useState<Date | null>(null)
-  const [location, setLocation] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
+  const [search, setSearch] = useState(initial?.search ?? '')
+  const [dateFrom, setDateFrom] = useState<Date | null>(
+    initial?.dateFrom ? new Date(initial.dateFrom) : null
+  )
+  const [dateTo, setDateTo] = useState<Date | null>(
+    initial?.dateTo ? new Date(initial.dateTo) : null
+  )
+  const [location, setLocation] = useState(initial?.location ?? '')
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
+    initial?.category ? (categories.find(c => c.slug === initial.category) ?? null) : null
+  )
   const [openPanel, setOpenPanel] = useState<'date' | 'location' | 'category' | null>(null)
-  const [calendarDate, setCalendarDate] = useState(new Date())
+  const [calendarDate, setCalendarDate] = useState(
+    initial?.dateFrom ? new Date(initial.dateFrom) : new Date()
+  )
 
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -93,6 +112,13 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
       if (clicked >= dateFrom) {
         setDateTo(clicked)
         setOpenPanel(null)
+        const params = new URLSearchParams()
+        if (search.trim()) params.set('search', search.trim())
+        params.set('startDate', dateFrom.toISOString().split('T')[0])
+        params.set('endDate', clicked.toISOString().split('T')[0])
+        if (location.trim()) params.set('location', location.trim())
+        if (selectedCategory) params.set('category', selectedCategory.slug)
+        router.push(`/events?${params.toString()}`)
       } else {
         // Clicked before dateFrom — restart with new dateFrom
         setDateFrom(clicked)
@@ -111,7 +137,7 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
       : 'Date'
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div ref={containerRef}>
       {/* ── Pill bar ───────────────────────────────────────────────────────── */}
       <div className="flex items-center bg-[#f2f2f4] rounded-[29px] h-[58px] px-3">
         {/* Search text */}
@@ -138,7 +164,7 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
           {openPanel === 'date' && (
             <div className="absolute top-[calc(100%+12px)] left-0 z-50 bg-white rounded-2xl shadow-2xl p-5 w-[320px]">
               {/* Step hint */}
-              <p className="text-[12px] font-semibold text-blue-600 uppercase tracking-wide mb-3">
+              <p className="text-[12px] font-semibold text-[#5c8bd9] uppercase tracking-wide mb-3">
                 {!dateFrom || dateTo ? 'Select start date' : 'Select end date'}
               </p>
               {/* Month navigation */}
@@ -184,7 +210,7 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
                       key={i}
                       className={`relative h-10 flex items-center justify-center
                         ${!singleDay && (inRange || (start && dateTo) || (end && dateFrom))
-                          ? 'bg-blue-100' : ''}
+                          ? 'bg-[#5c8bd9]/15' : ''}
                         ${!singleDay && start && dateTo ? 'rounded-l-full' : ''}
                         ${!singleDay && end ? 'rounded-r-full' : ''}
                       `}
@@ -193,11 +219,11 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
                         onClick={() => selectDay(day)}
                         className={`w-9 h-9 rounded-full text-[14px] font-medium transition-colors flex items-center justify-center z-10
                           ${start || end
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-[#5c8bd9] text-white'
                             : inRange
-                              ? 'text-blue-700 hover:bg-blue-200'
+                              ? 'text-[#5c8bd9] hover:bg-[#5c8bd9]/25'
                               : isToday(day)
-                                ? 'border-2 border-blue-500 text-blue-600 hover:bg-blue-50'
+                                ? 'border-2 border-[#5c8bd9] text-[#5c8bd9] hover:bg-[#5c8bd9]/10'
                                 : 'text-gray-800 hover:bg-gray-100'
                           }`}
                       >
@@ -211,7 +237,7 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
               {(dateFrom || dateTo) && (
                 <button
                   onClick={() => { setDateFrom(null); setDateTo(null) }}
-                  className="mt-3 w-full text-center text-[13px] text-gray-400 hover:text-gray-600 transition-colors py-1"
+                  className="mt-4 w-full text-center text-[13px] font-medium text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 rounded-lg transition-colors py-2"
                 >
                   Clear dates
                 </button>
@@ -244,7 +270,7 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
                   if (e.key === 'Enter') { setOpenPanel(null); handleSearch() }
                 }}
                 placeholder="City, venue, country..."
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-[14px] outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-[14px] outline-none focus:ring-2 focus:ring-[#5c8bd9] focus:border-transparent"
                 autoFocus
               />
               {location && (
@@ -275,7 +301,7 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
               <button
                 onClick={() => { setSelectedCategory(null); setOpenPanel(null) }}
                 className={`w-full text-left px-4 py-3 text-[14px] transition-colors hover:bg-gray-50
-                  ${!selectedCategory ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                  ${!selectedCategory ? 'font-semibold text-[#5c8bd9]' : 'text-gray-700'}`}
               >
                 All Categories
               </button>
@@ -295,7 +321,7 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
                     router.push(`/events?${params.toString()}`)
                   }}
                   className={`w-full text-left px-4 py-3 text-[14px] transition-colors hover:bg-gray-50
-                    ${selectedCategory?.id === cat.id ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                    ${selectedCategory?.id === cat.id ? 'font-semibold text-[#5c8bd9]' : 'text-gray-700'}`}
                 >
                   {cat.name}
                 </button>
@@ -313,11 +339,66 @@ export function HeroSearchBar({ categories }: { categories: Category[] }) {
           <SearchIcon />
         </button>
       </div>
+
+      {/* ── Category pills ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 mt-3 overflow-x-auto pb-1 scrollbar-hide">
+        <FilterIcon />
+        <div className="flex items-center gap-3 flex-nowrap">
+          <button
+            onClick={() => {
+              setSelectedCategory(null)
+              const params = new URLSearchParams()
+              if (search.trim()) params.set('search', search.trim())
+              if (dateFrom) params.set('startDate', dateFrom.toISOString().split('T')[0])
+              if (dateTo) params.set('endDate', dateTo.toISOString().split('T')[0])
+              if (location.trim()) params.set('location', location.trim())
+              router.push(`/events${params.toString() ? '?' + params.toString() : ''}`)
+            }}
+            className={`h-10 px-5 rounded-full text-[16px] font-medium font-['Outfit',sans-serif] whitespace-nowrap transition-colors shrink-0
+              ${!selectedCategory
+                ? 'bg-[#5c8bd9] text-white shadow-md'
+                : 'bg-[#f3f4f6] text-[#364153] hover:bg-[#e8eaed]'
+              }`}
+          >
+            All
+          </button>
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => {
+                setSelectedCategory(cat)
+                const params = new URLSearchParams()
+                if (search.trim()) params.set('search', search.trim())
+                if (dateFrom) params.set('startDate', dateFrom.toISOString().split('T')[0])
+                if (dateTo) params.set('endDate', dateTo.toISOString().split('T')[0])
+                if (location.trim()) params.set('location', location.trim())
+                params.set('category', cat.slug)
+                router.push(`/events?${params.toString()}`)
+              }}
+              className={`h-10 px-5 rounded-full text-[16px] font-medium font-['Outfit',sans-serif] whitespace-nowrap transition-colors shrink-0
+                ${selectedCategory?.id === cat.id
+                  ? 'bg-[#5c8bd9] text-white shadow-md'
+                  : 'bg-[#f3f4f6] text-[#364153] hover:bg-[#e8eaed]'
+                }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── SVG Icons ─────────────────────────────────────────────────────────────────
+
+function FilterIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-[#364153]">
+      <path d="M22 3H2l8 9.46V19l4 2V12.46L22 3z" />
+    </svg>
+  )
+}
 
 function ChevronDown() {
   return (
