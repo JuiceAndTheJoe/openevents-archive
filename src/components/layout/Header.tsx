@@ -12,6 +12,9 @@ export function Header() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [failedAvatarSrc, setFailedAvatarSrc] = useState<string | null>(null)
+  const [avatarVersion, setAvatarVersion] = useState(() => Date.now())
+  const [organizerAvatarPreview, setOrganizerAvatarPreview] = useState<string | null>(null)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
 
   const isOrganizer = session?.user?.roles?.includes('ORGANIZER')
@@ -19,7 +22,13 @@ export function Header() {
   const canManageEvents = Boolean(isOrganizer || isSuperAdmin)
   const avatarFallback = (session?.user?.email?.[0] || 'U').toUpperCase()
   const displayName = session?.user?.name?.trim() || session?.user?.email?.split('@')[0] || 'Account'
-  const profileHref = canManageEvents ? '/dashboard/profile' : '/profile'
+  const profileHref = isOrganizer ? '/dashboard/profile' : '/profile'
+  const avatarSrc = organizerAvatarPreview
+    ? organizerAvatarPreview
+    : isOrganizer
+      ? `/api/organizers/me/logo?v=${avatarVersion}`
+      : `/api/users/me/avatar?v=${avatarVersion}`
+  const shouldRenderAvatarImage = status === 'authenticated' && failedAvatarSrc !== avatarSrc && (isOrganizer || Boolean(session?.user?.image))
 
   // Determine route context for conditional rendering
   const isOrganizerRoute = pathname.startsWith('/dashboard') || pathname.startsWith('/admin')
@@ -51,6 +60,20 @@ export function Header() {
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('touchstart', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
+  useEffect(() => {
+    function onOrganizerLogoUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ previewUrl?: string | null }>).detail
+      setOrganizerAvatarPreview(detail?.previewUrl || null)
+      setFailedAvatarSrc(null)
+      setAvatarVersion(Date.now())
+    }
+
+    window.addEventListener('openevents:organizer-logo-updated', onOrganizerLogoUpdated)
+    return () => {
+      window.removeEventListener('openevents:organizer-logo-updated', onOrganizerLogoUpdated)
     }
   }, [])
 
@@ -102,12 +125,13 @@ export function Header() {
                     aria-expanded={accountMenuOpen}
                   >
                     <div className="h-8 w-8 overflow-hidden rounded-full border border-gray-200 bg-gray-100">
-                      {session.user.image ? (
+                      {shouldRenderAvatarImage ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src="/api/users/me/avatar"
+                          src={avatarSrc}
                           alt="Profile"
                           className="h-full w-full object-cover"
+                          onError={() => setFailedAvatarSrc(avatarSrc)}
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-gray-600">
