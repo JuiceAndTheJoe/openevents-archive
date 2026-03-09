@@ -2163,7 +2163,7 @@ export function EventForm({
         sortOrder: index,
       };
 
-      const hasExistingTicketType = Boolean(ticketType.id);
+      const hasExistingTicketType = Boolean(ticketType.id) && nextPersistedIds.has(ticketType.id);
       const endpoint = hasExistingTicketType
         ? `/api/events/${eventId}/ticket-types/${ticketType.id}`
         : `/api/events/${eventId}/ticket-types`;
@@ -3068,6 +3068,9 @@ export function EventForm({
   }
 
   async function submit(action: "save" | "publish") {
+    // Guard against double submissions (race condition before React state updates)
+    if (isSubmittingRef.current) return;
+
     setSubmitError(null);
     setGeneralErrors([]);
 
@@ -3094,6 +3097,7 @@ export function EventForm({
     }
 
     setIsSubmitting(true);
+    isSubmittingRef.current = true;
 
     try {
       const startUtc = validationResult.startUtc;
@@ -3229,6 +3233,7 @@ export function EventForm({
       setToast({ message, tone: "error" });
     } finally {
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   }
 
