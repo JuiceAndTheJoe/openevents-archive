@@ -47,7 +47,7 @@ export default async function HomePage() {
     <div className="flex flex-col">
       <section className="px-4 pb-5 pt-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <div className="relative w-full overflow-hidden rounded-tl-[20px] rounded-tr-[20px]">
+          <div className="relative w-full overflow-hidden rounded-[20px]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/hero-image.jpg"
