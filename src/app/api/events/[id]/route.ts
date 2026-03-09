@@ -186,7 +186,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
       }
 
-      const shouldUpdatePeople = speakerNames !== undefined || organizerNames !== undefined || sponsorNames !== undefined
+      const shouldUpdatePeople =
+        speakerNames !== undefined ||
+        organizerNames !== undefined ||
+        sponsorNames !== undefined ||
+        speakerPhotos !== undefined ||
+        speakerLinks !== undefined
 
       if (shouldUpdatePeople) {
         const existingSpeakers = await tx.speaker.findMany({
@@ -221,20 +226,43 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ? (speakerLinks || []).map((l) => l || '')
           : nextSpeakerNames.map((name) => existingLinksByName.get(name) || '')
 
-        if (existingSpeakers.length > 0) {
-          await tx.speaker.deleteMany({
-            where: { id: { in: existingSpeakers.map((s) => s.id) } },
-          })
-        }
-
         const peopleCreateData = buildPeopleCreateData(nextSpeakerNames, nextJobTitles, nextOrganizations, nextPhotos, nextLinks)
 
-        if (peopleCreateData.length > 0) {
+        const overlapCount = Math.min(existingSpeakers.length, peopleCreateData.length)
+
+        if (overlapCount > 0) {
+          await Promise.all(
+            peopleCreateData.slice(0, overlapCount).map((person, index) =>
+              tx.speaker.update({
+                where: { id: existingSpeakers[index].id },
+                data: {
+                  name: person.name,
+                  title: person.title,
+                  photo: person.photo,
+                  sortOrder: person.sortOrder,
+                  socialLinks: person.socialLinks,
+                },
+              })
+            )
+          )
+        }
+
+        if (peopleCreateData.length > existingSpeakers.length) {
           await tx.speaker.createMany({
-            data: peopleCreateData.map((person) => ({
+            data: peopleCreateData.slice(existingSpeakers.length).map((person) => ({
               eventId: id,
               ...person,
             })),
+          })
+        }
+
+        if (existingSpeakers.length > peopleCreateData.length) {
+          await tx.speaker.deleteMany({
+            where: {
+              id: {
+                in: existingSpeakers.slice(peopleCreateData.length).map((speaker) => speaker.id),
+              },
+            },
           })
         }
       }
