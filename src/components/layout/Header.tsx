@@ -22,7 +22,7 @@ export function Header() {
   const canManageEvents = Boolean(isOrganizer || isSuperAdmin)
   const avatarFallback = (session?.user?.email?.[0] || 'U').toUpperCase()
   const displayName = session?.user?.name?.trim() || session?.user?.email?.split('@')[0] || 'Account'
-  const profileHref = isOrganizer ? '/dashboard/profile' : '/profile'
+  const profileHref = '/dashboard/profile'
   const avatarSrc = organizerAvatarPreview
     ? organizerAvatarPreview
     : isOrganizer
