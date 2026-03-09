@@ -224,6 +224,14 @@ export function LoginForm() {
       {error && (
         <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200">
           {error}
+          {error.toLowerCase().includes('verify') && (
+            <span>
+              {' '}
+              <Link href="/verify-email" className="underline font-semibold hover:text-red-900">
+                Resend verification email
+              </Link>
+            </span>
+          )}
         </div>
       )}
 

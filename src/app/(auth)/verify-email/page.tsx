@@ -5,11 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Mail } from 'lucide-react'
 import { forgotPasswordSchema, type ForgotPasswordInput } from '@/lib/validations/auth'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 
 function VerifyEmailContent() {
   const router = useRouter()
@@ -97,192 +94,211 @@ function VerifyEmailContent() {
   // Show verifying state when token is present
   if (token && isVerifying) {
     return (
-      <Card>
-        <CardContent className="py-12">
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-500">Verifying your email...</p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="bg-white rounded-3xl shadow-[0px_10px_30px_0px_rgba(0,0,0,0.12)] px-12 py-12">
+        <div className="flex flex-col items-center justify-center space-y-4 py-8">
+          <svg
+            className="h-8 w-8 animate-spin text-[#5c8bd9]"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <p className="text-[#4a5565]">Verifying your email...</p>
+        </div>
+      </div>
     )
   }
 
   // Show verified success
   if (verified) {
     return (
-      <Card>
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center text-green-600">Email Verified!</CardTitle>
-          <CardDescription className="text-center">
-            Your email has been verified successfully
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <p className="text-gray-600">
-              Redirecting you to login...
-            </p>
+      <div className="bg-white rounded-3xl shadow-[0px_10px_30px_0px_rgba(0,0,0,0.12)] px-12 py-12">
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-bold text-green-600">Email Verified!</h1>
+          <p className="mt-2 text-lg text-[#4a5565]">Your email has been verified successfully</p>
+        </div>
+        <div className="flex flex-col items-center space-y-4 mb-8">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           </div>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <Link href="/login" className="w-full">
-            <Button className="w-full">
-              Go to Login
-            </Button>
-          </Link>
-        </CardFooter>
-      </Card>
+          <p className="text-[#4a5565]">Redirecting you to login...</p>
+        </div>
+        <div className="border-t border-[#d1d5dc] mb-6" />
+        <Link
+          href="/login"
+          className="flex h-[52px] w-full items-center justify-center rounded-[10px] bg-[#5c8bd9] text-lg font-semibold text-white shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#4a7ac8]"
+        >
+          Go to Login
+        </Link>
+      </div>
     )
   }
 
   // Show error with option to resend (when token verification failed)
   if (token && error) {
     return (
-      <Card>
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center text-red-600">Verification Failed</CardTitle>
-          <CardDescription className="text-center">
-            {error}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
+      <div className="bg-white rounded-3xl shadow-[0px_10px_30px_0px_rgba(0,0,0,0.12)] px-12 py-12">
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-bold text-red-600">Verification Failed</h1>
+          <p className="mt-2 text-lg text-[#4a5565]">{error}</p>
+        </div>
+        <div className="flex justify-center mb-8">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </div>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <Link href="/verify-email" className="w-full">
-            <Button className="w-full">
-              Request New Verification Link
-            </Button>
+        </div>
+        <div className="flex flex-col gap-3">
+          <Link
+            href="/verify-email"
+            className="flex h-[52px] w-full items-center justify-center rounded-[10px] bg-[#5c8bd9] text-lg font-semibold text-white shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#4a7ac8]"
+          >
+            Request New Verification Link
           </Link>
-          <Link href="/login" className="w-full">
-            <Button variant="outline" className="w-full">
-              Back to Login
-            </Button>
+          <Link
+            href="/login"
+            className="flex h-[52px] w-full items-center justify-center rounded-[10px] border border-[#d1d5dc] text-base font-semibold text-[#4a5565] transition-colors hover:bg-gray-50"
+          >
+            Back to Login
           </Link>
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   // Resend email success
   if (success) {
     return (
-      <Card>
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center text-green-600">Email Sent</CardTitle>
-          <CardDescription className="text-center">
-            Check your inbox for the verification link
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <p className="text-gray-600">
-              If an account exists with the email you provided, we&apos;ve sent a verification link.
-            </p>
-            <p className="text-sm text-gray-500">
-              The link will expire in 24 hours.
-            </p>
+      <div className="bg-white rounded-3xl shadow-[0px_10px_30px_0px_rgba(0,0,0,0.12)] px-12 py-12">
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-bold text-green-600">Email Sent</h1>
+          <p className="mt-2 text-lg text-[#4a5565]">Check your inbox for the verification link</p>
+        </div>
+        <div className="flex flex-col items-center space-y-4 mb-8">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           </div>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <Link href="/login" className="w-full">
-            <Button variant="outline" className="w-full">
-              Back to Login
-            </Button>
-          </Link>
-        </CardFooter>
-      </Card>
+          <p className="text-[#4a5565] text-center">
+            If an account exists with the email you provided, we&apos;ve sent a verification link.
+          </p>
+          <p className="text-sm text-[#828283]">The link will expire in 24 hours.</p>
+        </div>
+        <div className="border-t border-[#d1d5dc] mb-6" />
+        <Link
+          href="/login"
+          className="flex h-[52px] w-full items-center justify-center rounded-[10px] border border-[#d1d5dc] text-base font-semibold text-[#4a5565] transition-colors hover:bg-gray-50"
+        >
+          Back to Login
+        </Link>
+      </div>
     )
   }
 
   // Default: resend verification form
   return (
-    <Card>
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl text-center">Verify your email</CardTitle>
-        <CardDescription className="text-center">
-          Enter your email to receive a new verification link
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Error Message */}
-        {error && (
-          <div className="p-3 rounded-md bg-red-50 text-red-700 text-sm border border-red-200">
-            {error}
-          </div>
-        )}
+    <div className="bg-white rounded-3xl shadow-[0px_10px_30px_0px_rgba(0,0,0,0.12)] px-12 py-12">
+      {/* Header */}
+      <div className="mb-8 text-center">
+        <h1 className="text-4xl font-bold text-black">Verify your email</h1>
+        <p className="mt-2 text-lg text-[#4a5565]">Enter your email to receive a new verification link</p>
+      </div>
 
-        <div className="text-center space-y-4 mb-6">
-          <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <p className="text-sm text-gray-600">
-            Didn&apos;t receive the verification email? Enter your email address below and we&apos;ll send you a new one.
-          </p>
+      {/* Error */}
+      {error && (
+        <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200">
+          {error}
         </div>
+      )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
+      <div className="flex flex-col items-center space-y-4 mb-8">
+        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+          <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <p className="text-sm text-[#4a5565] text-center">
+          Didn&apos;t receive the verification email? Enter your email address below and we&apos;ll send you a new one.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <label className="text-base font-semibold text-black">Email address</label>
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#828283] pointer-events-none" />
+            <input
               type="email"
-              placeholder="name@example.com"
+              placeholder="your@email.com"
               autoComplete="email"
               disabled={isLoading}
-              error={errors.email?.message}
+              className="h-12 w-full rounded-[10px] bg-[#f2f2f4] pl-12 pr-4 text-base placeholder:text-[#828283] focus:outline-none focus:ring-2 focus:ring-[#5c8bd9] disabled:opacity-50"
               {...register('email')}
             />
           </div>
-
-          <Button type="submit" className="w-full" isLoading={isLoading}>
-            Resend verification email
-          </Button>
-        </form>
-      </CardContent>
-      <CardFooter className="flex flex-col space-y-4">
-        <div className="text-sm text-center text-gray-500">
-          Already verified?{' '}
-          <Link href="/login" className="text-blue-600 hover:underline">
-            Sign in
-          </Link>
+          {errors.email && (
+            <p className="text-sm text-red-600">{errors.email.message}</p>
+          )}
         </div>
-      </CardFooter>
-    </Card>
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="flex h-[52px] w-full items-center justify-center rounded-[10px] bg-[#5c8bd9] text-lg font-semibold text-white shadow-[0px_4px_6px_0px_rgba(0,0,0,0.1),0px_2px_4px_0px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#4a7ac8] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isLoading ? (
+            <svg
+              className="h-5 w-5 animate-spin"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            'Resend verification email'
+          )}
+        </button>
+      </form>
+
+      <div className="border-t border-[#d1d5dc] mt-6" />
+      <p className="mt-6 text-center text-base text-[#4a5565]">
+        Already verified?{' '}
+        <Link href="/login" className="font-semibold text-[#5c8bd9] hover:underline">
+          Sign in
+        </Link>
+      </p>
+    </div>
   )
 }
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={
-      <Card>
-        <CardContent className="py-12">
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-500">Loading...</p>
+    <Suspense
+      fallback={
+        <div className="bg-white rounded-3xl shadow-[0px_10px_30px_0px_rgba(0,0,0,0.12)] px-12 py-12">
+          <div className="flex flex-col items-center justify-center space-y-4 py-8">
+            <svg
+              className="h-8 w-8 animate-spin text-[#5c8bd9]"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <p className="text-[#4a5565]">Loading...</p>
           </div>
-        </CardContent>
-      </Card>
-    }>
+        </div>
+      }
+    >
       <VerifyEmailContent />
     </Suspense>
   )
