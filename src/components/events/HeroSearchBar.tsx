@@ -337,7 +337,6 @@ export function HeroSearchBar({
             )}
           </div>
         )}
-
         {/* ── Search icon ───────────────────────────────────────────────────── */}
         <button
           onClick={handleSearch}

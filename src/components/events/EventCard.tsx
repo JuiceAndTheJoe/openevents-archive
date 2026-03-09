@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { EventStatus, EventVisibility, LocationType } from '@prisma/client'
 import { Calendar, MapPin } from 'lucide-react'
+import { getPriceIncludingVat } from '@/lib/pricing/vat'
 import { formatEventPrice, formatEventDateTime } from '@/lib/utils'
 
 type EventCardProps = {
@@ -27,8 +28,13 @@ type EventCardProps = {
 }
 
 export function EventCard({ event }: EventCardProps) {
-  // Price display using unified utility
-  const priceDisplay = formatEventPrice(event.ticketTypes)
+  // Price display uses VAT-inclusive values (25% VAT).
+  const ticketTypesWithVat = event.ticketTypes.map((ticketType) => ({
+    ...ticketType,
+    price: getPriceIncludingVat(Number(ticketType.price)),
+  }))
+  const priceDisplay = formatEventPrice(ticketTypesWithVat)
+  const hasPaidTickets = event.ticketTypes.some((ticketType) => Number(ticketType.price) > 0)
 
   // Location display
   let locationDisplay: string
@@ -50,7 +56,7 @@ export function EventCard({ event }: EventCardProps) {
     >
       <div className="flex h-full flex-col overflow-hidden rounded-xl bg-[#f2f2f4] shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.1),0px_2px_4px_-2px_rgba(0,0,0,0.1)] transition-shadow hover:shadow-lg">
         {/* Image section */}
-        <div className="relative h-[200px] w-full shrink-0 bg-gradient-to-r from-blue-500 to-indigo-600">
+        <div className="relative h-[200px] w-full shrink-0 bg-gradient-to-r from-[#5C8BD9] to-[#4A7AC8]">
           {event.coverImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -88,6 +94,7 @@ export function EventCard({ event }: EventCardProps) {
                 style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
               >
                 {priceDisplay}
+                {hasPaidTickets ? ' (incl. VAT)' : ''}
               </span>
             )}
           </div>

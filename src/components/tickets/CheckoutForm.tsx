@@ -11,6 +11,7 @@ import { DiscountCodeInput, type AppliedDiscount } from '@/components/tickets/Di
 import { OrderSummary, type SummaryLineItem } from '@/components/tickets/OrderSummary'
 import { TicketSelector, type SelectableTicketType } from '@/components/tickets/TicketSelector'
 import { getClientOrderReservationTtlMinutes } from '@/lib/orders/reservation'
+import { getIncludedVatFromVatInclusiveTotal, getPriceIncludingVat } from '@/lib/pricing/vat'
 
 interface GroupDiscount {
   id: string
@@ -29,7 +30,7 @@ interface CheckoutFormProps {
   groupDiscounts?: GroupDiscount[]
 }
 
-// Checkout state persistence for PayPal cancel recovery
+// Checkout state persistence for payment-cancel recovery
 interface PersistedCheckoutState {
   eventId: string
   quantities: Record<string, number>
@@ -248,7 +249,6 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
   const wasSessionExpired = searchParams.get('session_expired') === 'true'
 
   const isAuthenticated = status === 'authenticated'
-  const isLoadingAuth = status === 'loading'
 
   // Track if we've restored state from localStorage (to show appropriate message)
   const [restoredFromSaved, setRestoredFromSaved] = useState(false)
@@ -285,7 +285,7 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
         const parsedTicketTypes: SelectableTicketType[] = data.ticketTypes.map(
           (ticket: SelectableTicketType & { price: number | string }) => ({
             ...ticket,
-            price: Number(ticket.price),
+            price: getPriceIncludingVat(Number(ticket.price)),
           })
         )
 
@@ -314,7 +314,7 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
     }
   }, [isAuthenticated, session?.user?.email])
 
-  // Restore checkout state from localStorage when returning from PayPal cancel
+  // Restore checkout state from localStorage when returning from a cancelled payment
   useEffect(() => {
     // Only restore if coming back from cancellation and ticket types are loaded
     if (!wasCancelled || ticketLoading || ticketTypes.length === 0) return
@@ -396,6 +396,10 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
   const totalAmount = useMemo(
     () => Number(Math.max(0, subtotal - discountAmount).toFixed(2)),
     [subtotal, discountAmount]
+  )
+  const includedVat = useMemo(
+    () => getIncludedVatFromVatInclusiveTotal(subtotal),
+    [subtotal]
   )
 
   const selectedTicketTypeIds = useMemo(
@@ -728,9 +732,9 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
           return
         }
 
-        // Check if PayPal redirect is needed
+        // Check if redirect payment is needed
         if (payData.checkout?.type === 'redirect' && payData.checkout?.approvalUrl) {
-          // Save checkout state before redirecting to PayPal
+          // Save checkout state before redirecting to Stripe
           // This allows recovery if user cancels or session expires
           saveCheckoutState({
             eventId: event.id,
@@ -792,6 +796,9 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
           <CardContent className="space-y-4">
             {ticketLoading && <p className="text-sm text-gray-500">Loading tickets...</p>}
             {ticketError && <p className="text-sm text-red-600">{ticketError}</p>}
+            {!ticketLoading && !ticketError && (
+              <p className="text-sm text-gray-500">All prices include VAT (25%).</p>
+            )}
             {!ticketLoading && !ticketError && (
               <TicketSelector
                 ticketTypes={ticketTypes}
@@ -1060,6 +1067,7 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
           subtotal={subtotal}
           discountAmount={discountAmount}
           totalAmount={totalAmount}
+          includedVat={includedVat}
           currency={selectedItems[0]?.currency ?? 'SEK'}
           discountCode={discount?.code}
           groupDiscountMessage={appliedDiscountType === 'group' ? groupDiscount.description : null}
@@ -1102,7 +1110,7 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
                   onChange={() => setPaymentMethod('PAYPAL')}
                   disabled={discount?.discountType === 'INVOICE'}
                 />
-                PayPal
+                Stripe
               </label>
               {/* Only show invoice option when an invoice-enabling discount code is applied */}
               {discount?.discountType === 'INVOICE' && (
@@ -1186,13 +1194,13 @@ export function CheckoutForm({ event, groupDiscounts = [] }: CheckoutFormProps) 
           disabled={isSubmitting || isRedirecting || reservationExpiredInSession || reservationSecondsRemaining === 0}
         >
           {isRedirecting
-            ? 'Redirecting to PayPal...'
+            ? 'Redirecting to Stripe...'
             : reservationExpiredInSession || reservationSecondsRemaining === 0
               ? 'Refresh Page to Continue'
             : totalAmount === 0
               ? 'Complete Free Order'
               : paymentMethod === 'PAYPAL'
-                ? 'Pay with PayPal'
+                ? 'Pay with Stripe'
                 : 'Place Order'}
         </Button>
       </div>

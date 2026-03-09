@@ -26,6 +26,14 @@ export function OrganizerProfileForm({ initial, action }: OrganizerProfileFormPr
   const [isUploadingLogo, setIsUploadingLogo] = useState(false)
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null)
 
+  function notifyHeaderLogoUpdated(previewUrl: string | null) {
+    window.dispatchEvent(
+      new CustomEvent('openevents:organizer-logo-updated', {
+        detail: { previewUrl },
+      })
+    )
+  }
+
   function extractXmlTagValue(xml: string, tagName: string): string | null {
     const match = xml.match(new RegExp(`<${tagName}>([^<]+)</${tagName}>`))
     return match?.[1] ?? null
@@ -108,6 +116,7 @@ export function OrganizerProfileForm({ initial, action }: OrganizerProfileFormPr
       setLogoUrl(publicUrl)
       setLogoPreviewUrl(nextPreviewUrl)
       setLogoVersion(Date.now())
+      notifyHeaderLogoUpdated(nextPreviewUrl)
     } catch (error) {
       const message = error instanceof Error ? error.message : null
       setLogoUploadError(message || 'Could not upload logo.')
@@ -210,6 +219,7 @@ export function OrganizerProfileForm({ initial, action }: OrganizerProfileFormPr
                     setLogoUrl('')
                     setLogoPreviewUrl(null)
                     setLogoUploadError(null)
+                    notifyHeaderLogoUpdated(null)
                   }}
                 >
                   Remove
