@@ -1,6 +1,6 @@
 # OpenEvents
 
-An open-source event management and ticketing platform built for [Streaming Tech Sweden 2026](https://events.apps.osaas.io). Built with Next.js, TypeScript, and deployed on [Eyevinn Open Source Cloud (OSC)](https://www.osaas.io/).
+An open-source event management and ticketing platform built for [Streaming Tech Sweden 2026](https://www.streamingtech.se/). Built with Next.js, TypeScript, and deployed on [Eyevinn Open Source Cloud (OSC)](https://www.osaas.io/).
 
 **Live site:** [events.apps.osaas.io](https://events.apps.osaas.io)
 
