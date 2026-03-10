@@ -80,7 +80,7 @@ An open-source event management and ticketing platform built for [Streaming Tech
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Eyevinn/openevents.git
+   git clone https://github.com/JuiceAndTheJoe/openevents.git
    cd openevents
    ```
 
@@ -229,6 +229,43 @@ npm run lint
 ## Deployment
 
 This project is deployed on [Eyevinn Open Source Cloud (OSC)](https://www.osaas.io/). See [ARCHITECTURE.md](./ARCHITECTURE.md) for OSC service configuration.
+
+### Deploying Your Own Instance
+
+To deploy OpenEvents for STSWE26 ticket sales:
+
+1. Clone the repository and set up the development environment according to [CONTRIBUTING.md](./CONTRIBUTING.md)
+2. Ensure your AI coding assistant is connected to GitHub and OSC via MCP
+3. Ask your assistant to "set up OpenEvents on my OSC"
+
+## Known Limitations & Recommendations
+
+This version of OpenEvents was built specifically for Streaming Tech Sweden 2026 and has some limitations that should be addressed for broader use.
+
+### Email Delivery
+
+The email integration is fully functional, but **emails sent through OSC's default mail service will not be delivered**. Email providers like Gmail and Outlook block messages from `@users.osaas.io` addresses.
+
+**Impact:** Users will not receive order confirmations, tickets, or receipts via email until a reputable email provider is configured.
+
+**Recommendation:** Configure a third-party email service (SendGrid, Postmark, AWS SES, etc.) via the environment variables in `.env`. See [Email Setup](./docs/SETUP_EMAIL.md) for configuration details.
+
+### Invoice Payments
+
+Invoice payment functionality is currently tied to Eyevinn. When users select invoice as their payment method, they are prompted to send payment details to `info@eyevinn.se`, regardless of which organizer created the event.
+
+**Recommendation:** For other organizations, update the invoice instructions in the checkout flow to point to the appropriate billing contact.
+
+### Guest Checkout Only
+
+Ticket buyers do not create accounts on the platform. This was a deliberate decision to minimize friction during the purchase process.
+
+**Impact:** Combined with the email delivery limitation above, buyers currently have limited ways to retrieve their ticket information after purchase. They cannot sign in to view past orders.
+
+**Recommendation:** For production use, either:
+- Configure working email delivery (priority)
+- Implement an order lookup feature using email + order number
+- Add optional account creation during checkout
 
 ## Contributing
 
