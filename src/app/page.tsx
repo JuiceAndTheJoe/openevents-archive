@@ -46,7 +46,7 @@ export default async function HomePage() {
   ])
 
   const heroText = settings.homepage_hero_text
-  const heroImage = settings.homepage_hero_image || '/hero-image.jpg'
+  const heroImage = settings.homepage_hero_image ? '/api/platform/image/hero' : '/hero-image.jpg'
   const eventLayout = (settings.homepage_event_layout || 'showcase') as 'showcase' | 'grid' | 'carousel'
 
   return (
@@ -60,14 +60,16 @@ export default async function HomePage() {
               alt={heroText}
               className="h-[220px] w-full object-cover sm:h-[300px] md:h-[360px] lg:h-[420px]"
             />
-            <div className="absolute left-4 right-4 top-[10%] rounded-[20px] border border-[rgba(255,255,255,0.31)] bg-[rgba(217,217,217,0.10)] px-4 py-3 backdrop-blur-[17.5px] sm:left-8 sm:right-auto sm:px-6 sm:py-4 md:left-10">
-              <h1
-                className="text-2xl font-bold leading-tight text-white sm:text-4xl md:text-5xl lg:text-[55px]"
-                style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
-              >
-                {heroText}
-              </h1>
-            </div>
+            {heroText && (
+              <div className="absolute left-4 right-4 top-[10%] rounded-[20px] border border-[rgba(255,255,255,0.31)] bg-[rgba(217,217,217,0.10)] px-4 py-3 backdrop-blur-[17.5px] sm:left-8 sm:right-auto sm:px-6 sm:py-4 md:left-10">
+                <h1
+                  className="text-2xl font-bold leading-tight text-white sm:text-4xl md:text-5xl lg:text-[55px]"
+                  style={{ fontFamily: 'var(--font-outfit), sans-serif' }}
+                >
+                  {heroText}
+                </h1>
+              </div>
+            )}
           </div>
         </div>
       </section>
