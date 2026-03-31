@@ -91,8 +91,8 @@ A white-label event management and ticketing platform built with Next.js, TypeSc
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/JuiceAndTheJoe/openevents-archive.git
-   cd openevents-archive
+   git clone https://github.com/Eyevinn/openevents.git
+   cd openevents
    ```
 
 2. Install dependencies:
