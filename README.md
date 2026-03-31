@@ -1,24 +1,33 @@
 # OpenEvents
 
-An open-source event management and ticketing platform built for [Streaming Tech Sweden 2026](https://www.streamingtech.se/). Built with Next.js, TypeScript, and deployed on [Eyevinn Open Source Cloud (OSC)](https://www.osaas.io/).
-
-**Live site:** [events.apps.osaas.io](https://events.apps.osaas.io)
+A white-label event management and ticketing platform built with Next.js, TypeScript, and deployed on [Eyevinn Open Source Cloud (OSC)](https://www.osaas.io/). Originally built for [Streaming Tech Sweden 2026](https://www.streamingtech.se/), now designed for single-tenant per-instance deployment.
 
 ## Features
+
+### White-Label Customization
+- Full platform branding: name, logo, favicon, brand color
+- Customizable homepage hero text, hero image, and event layout (showcase, grid, or carousel)
+- Editable legal pages: Terms of Service, Privacy Policy, About, and Contact
+- Footer customization with tagline and custom links
+- Light/dark theme toggle
+- All settings managed from the admin dashboard — no code changes needed
 
 ### Event Management
 - Create, edit, and publish events with rich details
 - Cover images and media uploads
 - Event visibility controls (public/private)
 - Event status workflow (draft, published, cancelled, completed)
+- Per-event timezone support for correct date display
 
 ### Ticketing & Sales
 - Multiple ticket types with individual pricing and capacity
 - Discount codes (percentage, fixed amount, free tickets)
-- Group discounts for bulk purchases
+- Per-order ticket cap on discount codes
+- Group discounts with minimum cart quantity thresholds
 - Invoice payment option for B2B customers
 - Ticket reservation system during checkout
 - Real-time availability tracking
+- Optional allergy/dietary requirement collection per event
 
 ### Speakers & Agenda
 - Speaker profiles with photos, bios, and social links
@@ -31,6 +40,7 @@ An open-source event management and ticketing platform built for [Streaming Tech
 - Invoice billing for corporate customers
 - Automated refund processing
 - VAT handling (25% included)
+- Runtime URL resolution for payment callbacks (OSC-compatible)
 
 ### Attendee Management
 - PDF tickets with QR codes
@@ -47,6 +57,8 @@ An open-source event management and ticketing platform built for [Streaming Tech
 
 ### Admin Panel
 - Platform-wide statistics
+- Platform branding and customization
+- Legal and contact page editor
 - User management with role assignment
 - Create accounts with one-time passwords
 - Event overview across all organizers
@@ -55,7 +67,6 @@ An open-source event management and ticketing platform built for [Streaming Tech
 - Organizer login with email/password
 - Role-based access control (Organizer, Super Admin)
 - Guest checkout for attendees (no account required)
-- Account deletion with grace period
 
 ## Tech Stack
 
@@ -80,8 +91,8 @@ An open-source event management and ticketing platform built for [Streaming Tech
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/JuiceAndTheJoe/openevents.git
-   cd openevents
+   git clone https://github.com/JuiceAndTheJoe/openevents-archive.git
+   cd openevents-archive
    ```
 
 2. Install dependencies:
@@ -148,7 +159,9 @@ openevents/
 │   │   │       │       ├── discounts/
 │   │   │       │       └── scan/
 │   │   │       ├── admin/     # Super admin panel
-│   │   │       │   └── users/
+│   │   │       │   ├── users/
+│   │   │       │   ├── customization/  # White-label settings
+│   │   │       │   └── legal/ # Legal & contact pages
 │   │   │       ├── profile/
 │   │   │       ├── settings/
 │   │   │       └── scan/      # Quick ticket scanner
@@ -168,6 +181,7 @@ openevents/
 │   │       │       └── mark-paid/
 │   │       ├── dashboard/
 │   │       ├── admin/
+│   │       ├── platform/      # Branding & image APIs
 │   │       ├── webhooks/
 │   │       └── upload/
 │   ├── components/            # React components
@@ -185,6 +199,9 @@ openevents/
 │   │   ├── storage/           # S3/MinIO utilities
 │   │   ├── payments/          # Stripe integration
 │   │   ├── analytics/         # Dashboard analytics
+│   │   ├── platform-settings.ts  # White-label config
+│   │   ├── legal-content.ts   # Legal page content
+│   │   ├── url.ts             # Runtime URL resolution
 │   │   └── validations/       # Zod schemas
 │   └── types/                 # TypeScript types
 ├── docs/                      # Documentation
@@ -233,7 +250,7 @@ This project is deployed on [Eyevinn Open Source Cloud (OSC)](https://www.osaas.
 
 To contribute features or fixes to the live site at events.apps.osaas.io:
 
-1. Fork or clone [github.com/JuiceAndTheJoe/openevents](https://github.com/JuiceAndTheJoe/openevents)
+1. Fork or clone [github.com/Eyevinn/openevents](https://github.com/Eyevinn/openevents)
 2. Set up your local development environment (see [Quick Start](#quick-start))
 3. Make your changes following the guidelines in [CONTRIBUTING.md](./CONTRIBUTING.md)
 4. Submit a pull request to `main`
@@ -256,32 +273,17 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for details on OSC service configuratio
 
 ## Known Limitations & Recommendations
 
-This version of OpenEvents was built specifically for Streaming Tech Sweden 2026 and has some limitations that should be addressed for broader use.
-
 ### Email Delivery
 
 The email integration is fully functional, but **emails sent through OSC's default mail service will not be delivered**. Email providers like Gmail and Outlook block messages from `@users.osaas.io` addresses.
 
-**Impact:** Users will not receive order confirmations, tickets, or receipts via email until a reputable email provider is configured.
-
 **Recommendation:** Configure a third-party email service (SendGrid, Postmark, AWS SES, etc.) via the environment variables in `.env`. See [Email Setup](./docs/SETUP_EMAIL.md) for configuration details.
-
-### Invoice Payments
-
-Invoice payment functionality is currently tied to Eyevinn. When users select invoice as their payment method, they are prompted to send payment details to `info@eyevinn.se`, regardless of which organizer created the event.
-
-**Recommendation:** For other organizations, update the invoice instructions in the checkout flow to point to the appropriate billing contact.
 
 ### Guest Checkout Only
 
-Ticket buyers do not create accounts on the platform. This was a deliberate decision to minimize friction during the purchase process.
+Ticket buyers do not create accounts on the platform. This is a deliberate design choice to minimize purchase friction.
 
-**Impact:** Combined with the email delivery limitation above, buyers currently have limited ways to retrieve their ticket information after purchase. They cannot sign in to view past orders.
-
-**Recommendation:** For production use, either:
-- Configure working email delivery (priority)
-- Implement an order lookup feature using email + order number
-- Add optional account creation during checkout
+**Recommendation:** For production use, ensure working email delivery so buyers can receive their tickets and order confirmations.
 
 ## Contributing
 
